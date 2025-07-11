@@ -39,24 +39,28 @@ class CommandTemplate:
     _log_dir: Path
     _log_prefix: str
     _cmd: str
+    _envs: str
     _log_filename: str
+    _arg_names: List[str]
     def __init__(self, template: str, log_prefix: str = ''):
-        self._is_valid = False
         self._skeleton = template
         self._log_dir = Path(".")
         self._cmd = ""
+        self._envs = ''
         self._log_filename = ''
+        self._log_prefix = ''
+        self._arg_names = self._get_vars_from_f_string()
         self._log_prefix = f"{log_prefix}_" if log_prefix != "" else ""
+        self._is_valid = len(self._arg_names) == 0
 
     def hydrate(self, **kwargs: str | int | float):
         self._is_valid = True
         self._log_filename = self._log_prefix
         # hydrate
-        arg_names = self._get_vars_from_f_string()
         args: Dict[str, str | int | float] = {}
 
         for key, value in kwargs.items():
-            if key in arg_names:
+            if key in self._arg_names:
                 args[key] = value
                 self._log_filename += f"{key}_{value}"
         
@@ -68,6 +72,11 @@ class CommandTemplate:
     def set_log_dir(self, log_dir: Path) -> None:
         self._log_dir = log_dir
 
+    def set_env(self, envs: Dict[str, str]) -> None:
+        self._envs = ''
+        for key, value in envs.items():
+            self._envs += f'{key}={value} '
+
     def exec(self) -> None:
         assert self._is_valid == True, "You should invoke `hydrate` method"
 
@@ -78,8 +87,13 @@ class CommandTemplate:
         cmd = self._transform()
         return cmd.split(sep)
 
+    def get_absolute_log_path(self):
+        assert self._log_filename != '', 'You should invoke `hydrate` method'
+        p = self._log_dir / self._log_filename
+        return p.absolute().as_posix()
+
     def _transform(self):
-        cmd = self._cmd
+        cmd = self._envs + self._cmd
 
         if self._log_filename != "":
             log_path = self._log_dir / self._log_filename
@@ -98,18 +112,15 @@ ENV = Dict[str, str]
 
 class BenchmarkArgs(TypedDict):
     log_dir: Path
-    log_prefix: str
     envs: ENV | None
     
 class Benchmark:
     runner_type: Optional[RunnerType]
     _env: Dict[str, str]
     _log_dir: Path
-    _log_prefix: str
-    _log_path: Dict[str, Path]
     _cmd: Dict[str, CommandTemplate]
 
-    def __init__(self, log_dir: Path = Path("."), log_prefix: str = '', envs: ENV | None = None):
+    def __init__(self, log_dir: Path = Path("."), envs: ENV | None = None):
         # BenchmarkRunner Type
         self.runner_type = None
 
@@ -122,8 +133,6 @@ class Benchmark:
 
         # Path 관리
         self._log_dir = log_dir
-        self._log_prefix = log_prefix
-        self._log_path = {}
 
         # Command 관리
         self._skeleton_cmd = {}

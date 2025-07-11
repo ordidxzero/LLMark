@@ -6,7 +6,7 @@ class VLLMBenchmarkRunner(Benchmark):
     _server_process: subprocess.Popen[str] | None
     _terminate_server: Callable[..., None] | None
     _is_init: bool
-    def __init__(self, benchmark_cmd: str, server_cmd: str, **kwargs: Unpack[BenchmarkArgs]):
+    def __init__(self, benchmark_cmd: str, server_cmd: str, log_prefix: str = '', **kwargs: Unpack[BenchmarkArgs]):
         super().__init__(**kwargs)
 
         self._set_runner_type("vllm")
@@ -14,8 +14,8 @@ class VLLMBenchmarkRunner(Benchmark):
         self._server_process = None
         self._terminate_server = None
 
-        self._cmd["benchmark"] = CommandTemplate(benchmark_cmd)
-        self._cmd["server"] = CommandTemplate(server_cmd)
+        self._cmd["benchmark"] = CommandTemplate(benchmark_cmd, log_prefix=log_prefix)
+        self._cmd["server"] = CommandTemplate(server_cmd, log_prefix=log_prefix)
 
         self._is_init = False
     
@@ -36,7 +36,7 @@ class VLLMBenchmarkRunner(Benchmark):
             self._server_process = None
         
         print("Running...")
-        log_file = open(self._log_path["server"], "w")
+        log_file = open(self._cmd['server'].get_absolute_log_path(), "w")
         
         server_process = subprocess.Popen(args=self._cmd["server"].split(" "), text=True, encoding="utf-8", stdout=log_file, env=self._env)
         self._server_process = server_process
