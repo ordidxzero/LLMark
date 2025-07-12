@@ -15,7 +15,7 @@ class VLLMBenchmarkRunner(Benchmark):
         self._terminate_server = None
 
         self._cmd["benchmark"] = CommandTemplate(benchmark_cmd, log_prefix=log_prefix)
-        self._cmd["server"] = CommandTemplate(server_cmd, log_prefix=log_prefix)
+        self._cmd["server"] = CommandTemplate(server_cmd, log_prefix=log_prefix, stdout_log=True)
 
         self._is_init = False
     

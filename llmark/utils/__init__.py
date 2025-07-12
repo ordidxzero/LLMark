@@ -2,6 +2,7 @@ import importlib.util
 import os, socket, subprocess
 from importlib.metadata import version
 from typing import Optional, Dict, Literal, TypedDict, List
+from typing_extensions import NotRequired
 from pathlib import Path
 from string import Formatter
 
@@ -40,31 +41,32 @@ class CommandTemplate:
     _log_prefix: str
     _cmd: str
     _envs: str
-    _log_filename: str
+    _log_filename: List[str]
     _arg_names: List[str]
-    def __init__(self, template: str, log_prefix: str = ''):
+    _stdout_log: bool
+    def __init__(self, template: str, log_prefix: str = '', stdout_log: bool = False):
         self._skeleton = template
         self._log_dir = Path(".")
         self._cmd = ""
         self._envs = ''
-        self._log_filename = ''
-        self._log_prefix = ''
+        self._log_filename = []
         self._arg_names = self._get_vars_from_f_string()
         self._log_prefix = f"{log_prefix}_" if log_prefix != "" else ""
         self._is_valid = len(self._arg_names) == 0
+        self._stdout_log = stdout_log
 
     def hydrate(self, **kwargs: str | int | float):
         self._is_valid = True
-        self._log_filename = self._log_prefix
+        self._log_filename = [self._log_prefix] if self._log_prefix != '' else []
         # hydrate
         args: Dict[str, str | int | float] = {}
 
         for key, value in kwargs.items():
+            self._log_filename.append(f"{key}_{value}")
             if key in self._arg_names:
                 args[key] = value
-                self._log_filename += f"{key}_{value}"
         
-        self._log_filename += '.log'
+        self._log_filename.append('.log')
 
         self._cmd = self._skeleton.format(**args)
 
@@ -88,18 +90,28 @@ class CommandTemplate:
         return cmd.split(sep)
 
     def get_absolute_log_path(self):
-        assert self._log_filename != '', 'You should invoke `hydrate` method'
-        p = self._log_dir / self._log_filename
+        assert len(self._log_filename) != 0, 'You should invoke `hydrate` method'
+        log_filename = "_".join(self._log_filename)
+        p = self._log_dir / log_filename
+
+        if not self._log_dir.exists():
+            self._log_dir.mkdir(parents=True)
+
         return p.absolute().as_posix()
 
     def _transform(self):
         cmd = self._envs + self._cmd
 
-        if self._log_filename != "":
-            log_path = self._log_dir / self._log_filename
+        if len(self._log_filename) != 0:
+            log_filename = "_".join(self._log_filename)
+            log_path = self._log_dir / log_filename
             log_path = log_path.absolute().as_posix()
 
-            cmd += " >> " + log_path
+            if not self._log_dir.exists():
+                self._log_dir.mkdir(parents=True)
+            
+            if not self._stdout_log:
+                cmd += " >> " + log_path
 
         return cmd
     
@@ -111,8 +123,8 @@ RunnerType = Literal["vllm", "tensorrt_llm", "triton", "vllm_rbln"]
 ENV = Dict[str, str]
 
 class BenchmarkArgs(TypedDict):
-    log_dir: Path
-    envs: ENV | None
+    log_dir: NotRequired[Path]
+    envs: NotRequired[ENV]
     
 class Benchmark:
     runner_type: Optional[RunnerType]
@@ -120,7 +132,8 @@ class Benchmark:
     _log_dir: Path
     _cmd: Dict[str, CommandTemplate]
 
-    def __init__(self, log_dir: Path = Path("."), envs: ENV | None = None):
+    def __init__(self, log_dir: Optional[Path] = Path("."), envs: ENV | None = None):
+        assert log_dir is not None, "Error"
         # BenchmarkRunner Type
         self.runner_type = None
 
