@@ -77,7 +77,7 @@ class CommandTemplate:
     def set_env(self, envs: Dict[str, str]) -> None:
         self._envs = ''
         for key, value in envs.items():
-            self._envs += f'{key}={value} '
+            self._envs += f'{key.upper()}={value} '
     
     def set_log_prefix(self, prefix: str) -> None:
         self._log_prefix = prefix
@@ -141,7 +141,7 @@ class Benchmark:
         self.runner_type = None
 
         # Environment Variables 관리
-        self._env = os.environ.copy()
+        self._env = {}
         self._env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         if envs is not None:
             assert isinstance(envs, dict), "env must be dictionary"
