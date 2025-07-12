@@ -14,9 +14,10 @@ class VLLMBenchmarkRunner(Benchmark):
         self._server_process = None
         self._terminate_server = None
 
-        self._cmd["benchmark"] = CommandTemplate(benchmark_cmd, log_prefix=log_prefix)
-        self._cmd["server"] = CommandTemplate(server_cmd, log_prefix=log_prefix, stdout_log=True)
-
+        self._cmd["benchmark"] = CommandTemplate(benchmark_cmd)
+        self._cmd["benchmark"].set_log_prefix(log_prefix)
+        self._cmd["server"] = CommandTemplate(server_cmd, stdout_log=True)
+        self._cmd["server"].set_log_prefix(log_prefix)
         self._is_init = False
     
     def init(self, **kwargs: str | int | float):
@@ -27,6 +28,14 @@ class VLLMBenchmarkRunner(Benchmark):
             cmd.hydrate(**kwargs)
 
         self._is_init = True
+
+    def set_log_prefix(self, prefix: str, name: str | None = None):
+        if name is None:
+            for cmd in self._cmd.values():
+                cmd.set_log_prefix(prefix)
+        else:
+            assert name in self._cmd, "Not Found"
+            self._cmd[name].set_log_prefix(prefix)
 
     def run_server(self):
         assert self._is_init == True, "Runner is not initalized. Invoke init()"

@@ -44,14 +44,14 @@ class CommandTemplate:
     _log_filename: List[str]
     _arg_names: List[str]
     _stdout_log: bool
-    def __init__(self, template: str, log_prefix: str = '', stdout_log: bool = False):
+    def __init__(self, template: str, stdout_log: bool = False):
         self._skeleton = template
         self._log_dir = Path(".")
         self._cmd = ""
         self._envs = ''
         self._log_filename = []
         self._arg_names = self._get_vars_from_f_string()
-        self._log_prefix = f"{log_prefix}_" if log_prefix != "" else ""
+        self._log_prefix = ""
         self._is_valid = len(self._arg_names) == 0
         self._stdout_log = stdout_log
 
@@ -78,6 +78,9 @@ class CommandTemplate:
         self._envs = ''
         for key, value in envs.items():
             self._envs += f'{key}={value} '
+    
+    def set_log_prefix(self, prefix: str) -> None:
+        self._log_prefix = prefix
 
     def exec(self) -> None:
         assert self._is_valid == True, "You should invoke `hydrate` method"
