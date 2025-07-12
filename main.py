@@ -3,12 +3,8 @@ from pathlib import Path
 from tqdm import tqdm
 
 BENCHMARK_CMD = "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --random-input-len {input_len} --ignore-eos --random-output-len {output_len} --num-prompts 4096"
-SERVER_CMD = (
-    "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests"
-)
-runner = VLLMBenchmarkRunner(
-    benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output")
-)
+SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests"
+runner = VLLMBenchmarkRunner(benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output"))
 
 INPUT_LENGTHS = [2048, 128]
 OUTPUT_LENGTHS = [2048, 128]
