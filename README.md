@@ -43,6 +43,8 @@ INPUT_LENGTHS = [2048, 128]
 OUTPUT_LENGTHS = [2048, 128]
 MAX_BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
+pbar = tqdm(total= len(OUTPUT_LENGTHS) * len(INPUT_LENGTHS) * len(MAX_BATCH_SIZES))
+
 for output_len in OUTPUT_LENGTHS:
     for input_len in INPUT_LENGTHS:
         for max_num_seqs in MAX_BATCH_SIZES:
