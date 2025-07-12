@@ -13,7 +13,10 @@ class VLLMBenchmarkRunner(Benchmark):
     _server_process: subprocess.Popen[str] | None
     _terminate_server: Callable[..., None] | None
     _is_init: bool
-    def __init__(self, benchmark_cmd: str, server_cmd: str, **kwargs: Unpack[BenchmarkArgs]):
+
+    def __init__(
+        self, benchmark_cmd: str, server_cmd: str, **kwargs: Unpack[BenchmarkArgs]
+    ):
         super().__init__(**kwargs)
 
         self._set_runner_type("vllm")
