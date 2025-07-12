@@ -143,12 +143,13 @@ class Benchmark:
 
         # Environment Variables 관리
         self._env = os.environ.copy()
+        self._user_env = {}
         self._env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-        self._user_env = envs
         self._user_env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         if envs is not None:
             assert isinstance(envs, dict), "env must be dictionary"
             self._env.update(envs)
+            self._user_env.update(envs)
 
         # Path 관리
         self._log_dir = log_dir
