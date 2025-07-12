@@ -15,11 +15,7 @@ class VLLMBenchmarkRunner(Benchmark):
     _is_init: bool
 
     def __init__(
-        self,
-        benchmark_cmd: str,
-        server_cmd: str,
-        log_prefix: str = "",
-        **kwargs: Unpack[BenchmarkArgs]
+        self, benchmark_cmd: str, server_cmd: str, **kwargs: Unpack[BenchmarkArgs]
     ):
         super().__init__(**kwargs)
 
@@ -29,9 +25,7 @@ class VLLMBenchmarkRunner(Benchmark):
         self._terminate_server = None
 
         self._cmd["benchmark"] = CommandTemplate(benchmark_cmd)
-        self._cmd["benchmark"].set_log_prefix(log_prefix)
         self._cmd["server"] = CommandTemplate(server_cmd, stdout_log=True)
-        self._cmd["server"].set_log_prefix(log_prefix)
         self._is_init = False
 
     def init(self, **kwargs: str | int | float):
@@ -42,6 +36,12 @@ class VLLMBenchmarkRunner(Benchmark):
             cmd.hydrate(**kwargs)
 
         self._is_init = True
+
+    def set_benchmark_cmd(self, cmd: str):
+        self._cmd["benchmark"] = CommandTemplate(cmd)
+
+    def set_server_cmd(self, cmd: str):
+        self._cmd["server"] = CommandTemplate(cmd, stdout_log=True)
 
     def set_log_prefix(self, prefix: str, name: str | None = None):
         if name is None:
@@ -95,9 +95,10 @@ class VLLMBenchmarkRunner(Benchmark):
         while True:
             if Benchmark.is_port_open():
                 self.run_benchmark()
-                self._terminate_server()
                 break
             time.sleep(1)
+
+        self._terminate_server()
 
 
 if __name__ != "__main__":
