@@ -82,7 +82,7 @@ class VLLMBenchmarkRunner(Benchmark):
 
     def run_benchmark(self):
         print("Start Benchmark...")
-        self._cmd["benchmark"].set_env(self._env)
+        self._cmd["benchmark"].set_env(self._user_env)
         self._cmd["benchmark"].exec()
 
     def run(self, **kwargs: str | int | float):

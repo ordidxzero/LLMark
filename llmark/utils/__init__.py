@@ -132,6 +132,7 @@ class BenchmarkArgs(TypedDict):
 class Benchmark:
     runner_type: Optional[RunnerType]
     _env: Dict[str, str]
+    _user_env: Dict[str, str]
     _log_dir: Path
     _cmd: Dict[str, CommandTemplate]
 
@@ -141,8 +142,10 @@ class Benchmark:
         self.runner_type = None
 
         # Environment Variables 관리
-        self._env = {}
+        self._env = os.environ.copy()
         self._env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        self._user_env = envs
+        self._user_env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         if envs is not None:
             assert isinstance(envs, dict), "env must be dictionary"
             self._env.update(envs)
