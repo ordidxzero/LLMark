@@ -1,5 +1,6 @@
 import subprocess, time
 from typing_extensions import Unpack, Callable
+from pathlib import Path
 from llmark.utils import (
     find_package,
     find_package_version,
@@ -50,6 +51,11 @@ class VLLMBenchmarkRunner(Benchmark):
         else:
             assert name in self._cmd, "Not Found"
             self._cmd[name].set_log_prefix(prefix)
+
+    def get_server_log(self) -> Path:
+        server_cmd = self._cmd['server']
+
+        return server_cmd.log_dir
 
     def run_server(self):
         assert self._is_init == True, "Runner is not initalized. Invoke init()"

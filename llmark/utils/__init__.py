@@ -74,6 +74,10 @@ class CommandTemplate:
     def set_log_dir(self, log_dir: Path) -> None:
         self._log_dir = log_dir
 
+    @property
+    def log_dir(self):
+        return self._log_dir
+
     def set_env(self, envs: Dict[str, str]) -> None:
         self._envs = ''
         for key, value in envs.items():
@@ -186,3 +190,6 @@ class Benchmark:
         except Exception:
             return False
         
+class LogAnalyzer:
+    def __init__(self, log_dir: Path):
+        self._log_dir = log_dir
