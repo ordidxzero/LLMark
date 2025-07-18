@@ -10,8 +10,6 @@ class VLLMAnalyzer(LogAnalyzer):
     
     def _parse_line(self, line: str):
         result = re.search(r'iter: (\d+), Avg prompt throughput: (\d+.\d+) tokens/s, Avg generation throughput: (\d+.\d+) tokens/s, Running: (\d+) reqs, Swapped: (\d+) reqs, Pending: (\d+) reqs, GPU KV cache usage: (\d+.\d+)%, CPU KV cache usage: (\d+.\d+)%, GPU Total Block: (\d+), GPU Free Block: (\d+), CPU Total Block: (\d+), CPU Free Block: (\d+), actual_num_batched_tokens: (\d+), Prompt stage: (\d+) reqs, Generation stage: (\d+) reqs, Preemption: (\d+) reqs, Generation: (\d+) tokens, Latency: (\d+.\d+)', line)
-        if result is None:
-            breakpoint()
         
         iter_num = int(result.group(1))
         prompt_throughput = float(result.group(2))
