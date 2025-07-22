@@ -1,7 +1,7 @@
 from llmark.utils import Benchmark, BenchmarkArgs, CommandTemplate
 from typing_extensions import Unpack
 from pathlib import Path
-import os
+import os, torch
 
 class TensorRTLLMDatasetGenerator:
     _dataset_dir: Path
@@ -61,6 +61,10 @@ class TensorRTLLMBenchmarkRunner(Benchmark):
         self._cmd['delete'].exec()
 
     def set_log_prefix(self, prefix: str, name: str | None = None):
+        device_name = torch.cuda.get_device_name(0)
+        device_name = device_name.replace("NVIDIA", "")
+        device_name = device_name.replace(" ", "_")
+        prefix = device_name + prefix
         if name is None:
             for cmd in self._cmd.values():
                 cmd.set_log_prefix(prefix)
