@@ -58,8 +58,6 @@ class TensorRTLLMBenchmarkRunner(Benchmark):
         self.build_model()
         self.run_benchmark()
 
-        self._cmd['delete'].exec()
-
     def set_log_prefix(self, prefix: str, name: str | None = None):
         device_name = torch.cuda.get_device_name(0)
         device_name = device_name.replace("NVIDIA ", "")
@@ -75,6 +73,7 @@ class TensorRTLLMBenchmarkRunner(Benchmark):
 
     def build_model(self):
         print("Start Build...")
+        self._cmd['delete'].exec()
         self._cmd["build"].set_env(self._user_env)
         self._cmd["build"].exec()
 
