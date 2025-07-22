@@ -17,6 +17,8 @@ class VLLMAnalyzer(LogAnalyzer):
         # running_seqs = int(result.group(4))
         # swapped_seqs = int(result.group(5))
         # pending_seqs = int(result.group(6))
+        gpu_kv_cache_usage = float(result.group(7))
+        # cpu_kv_cache_usage = float(result.group(8))
         gpu_total_block = int(result.group(9))
         gpu_free_block = int(result.group(10))
         cpu_total_block = int(result.group(11))
@@ -28,7 +30,7 @@ class VLLMAnalyzer(LogAnalyzer):
         generation_tokens = int(result.group(17))
         latency_iter = float(result.group(18))
 
-        return iter_num, prompt_throughput, generation_throughput, prompt_seqs, generation_seqs, preemption_seqs, latency_iter
+        return iter_num, prompt_throughput, generation_throughput, gpu_kv_cache_usage, gpu_total_block, gpu_free_block, prompt_seqs, generation_seqs, preemption_seqs, latency_iter
     
     def _get_prompt_iter_gap(self, iter_nums: List[int]):
         gaps = []
@@ -41,6 +43,25 @@ class VLLMAnalyzer(LogAnalyzer):
     
     def _mean(self, d: List[int | float]):
         return round(sum(d) / len(d), 2)
+    
+    def plot_gpu_blocks(self, blocks: List[int], source_path: Path, target_path: Path):
+        import matplotlib.pyplot as plt
+
+        x = list(range(len(blocks)))  # x축 인덱스
+
+        plt.figure(figsize=(10, 5))
+        plt.bar(x, blocks, width=1.0, align='edge')
+
+        plt.ylabel('Percentage')
+        plt.title('GPU KV Cache Usage')
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        p = target_path / source_path.with_suffix(".png").name
+
+        # 저장: 파일명과 확장자를 지정 (예: PNG, JPG, PDF 등)
+        plt.savefig(p.absolute().as_posix(), dpi=300)  # 고해상도로 저장
+        plt.close()  # 메모리 절약을 위해 닫기
 
     def run(self, pattern: str, save_dir: Path = None):
         assert pattern is not None and pattern != "" and isinstance(pattern, str), "Error"
@@ -57,13 +78,30 @@ class VLLMAnalyzer(LogAnalyzer):
                 "latencies": []
             }
             rest_state = {
-                "preemption_seqs": []
+                "preemption_seqs": [],
+                "gpu_total_block": -1,
+                "gpu_kv_cache_usage": []
             }
             with open(logfile_path, "r") as logfile:
+                is_end_test_request = None
+                test_end_index = 0
                 for line in logfile:
                     if "metrics.py" in line:
-                        iter_num, prompt_throughput, generation_throughput, prompt_seqs, generation_seqs, preemption_seqs, latency = self._parse_line(line)
+                        iter_num, prompt_throughput, generation_throughput, gpu_kv_cache_usage, gpu_total_block, gpu_free_block, prompt_seqs, generation_seqs, preemption_seqs, latency = self._parse_line(line)
                         rest_state['preemption_seqs'].append(preemption_seqs)
+                        rest_state['gpu_kv_cache_usage'].append(gpu_kv_cache_usage)
+
+                        if is_end_test_request != True:
+                            test_end_index += 1
+
+                        if prompt_seqs == 0 and generation_seqs == 0:
+                            if is_end_test_request is None:
+                                is_end_test_request = False
+                            elif is_end_test_request == False:
+                                is_end_test_request = True
+
+                        if rest_state['gpu_total_block'] == -1:
+                            rest_state['gpu_total_block'] = gpu_total_block
                         
                         if prompt_throughput != 0.0:
                             # Prompt Stage
@@ -84,6 +122,8 @@ class VLLMAnalyzer(LogAnalyzer):
 
             dist_dir = save_dir if save_dir is not None else self._log_dir
 
+            self.plot_gpu_blocks(rest_state['gpu_kv_cache_usage'][test_end_index:], logfile_path, save_dir)
+
             if not dist_dir.exists():
                 dist_dir.mkdir(parents=True)
 
@@ -94,6 +134,7 @@ class VLLMAnalyzer(LogAnalyzer):
                     "avg_generation_seqs": self._mean(generation_state['running_seqs']),
                     "avg_prompt_latency": self._mean(prompt_state['latencies']),
                     "avg_generation_latency": self._mean(generation_state['latencies']),
+                    "preemption_seqs": sum(rest_state['preemption_seqs']),
                     "prefill_frequency": self._mean(prompt_iter_gaps)
                 }
 
