@@ -10,13 +10,28 @@ class TensorRTLLMDatasetGenerator:
         self._dataset_dir = save_dir
         self._script_path = script_path
 
-    def generate(self, name: str, tokenizer: str = "meta-llama/Llama-3.1-8B-Instruct", num_requests: int = 1024, input_len: int = 1024, output_len: int = 1024) -> str:
-        if not name.endswith(".json"):
-            name += ".json"
+    def generate(self, name: str, tokenizer: str = "meta-llama/Llama-3.1-8B-Instruct", num_requests: int = 1024, input_len: int = 1024, output_len: int = 1024, for_build: bool = False) -> str:
+        if for_build:
+            if not name.endswith('.txt'):
+                name += '.txt'
+        else:
+            if not name.endswith(".json"):
+                name += ".json"
+
+        if (self._dataset_dir / name).exists():
+            print("Skip generating dataset...")
+            return (self._dataset_dir / name).absolute().as_posix()
+
+        print("Generate Dataset ...")
 
         dataset_path = (self._dataset_dir / name).absolute().as_posix()
 
+
         cmd = f"python {self._script_path} --output {dataset_path} --tokenizer {tokenizer} token-norm-dist --num-requests {num_requests} --input-mean {input_len} --input-stdev 0 --output-mean {output_len} --output-stdev 0"
+        
+        if for_build:
+            cmd = f"python {self._script_path} --stdout --tokenizer {tokenizer} token-norm-dist --input-mean {input_len} --output-mean {output_len} --input-stdev 0 --output-stdev 0 --num-requests {num_requests} > {dataset_path}"
+        
         os.system(cmd)
 
         return dataset_path
@@ -28,29 +43,41 @@ class TensorRTLLMBenchmarkRunner(Benchmark):
         self._set_runner_type("tensorrt_llm")
 
         self._cmd["benchmark"] = CommandTemplate(benchmark_cmd)
-        self._cmd["build"] = CommandTemplate(build_cmd)
+        self._cmd["build"] = CommandTemplate(build_cmd, stdout_log=True)
         self._cmd["delete"] = CommandTemplate(delete_cmd)
 
-    def run(self, **kwargs: str | int | float):
+    def init(self, **kwargs: str | int | float):
         self._cmd['benchmark'].set_log_dir(self._log_dir)
 
         for _, cmd in self._cmd.items():
             cmd.hydrate(**kwargs)
 
-        self._build_model()
-        self._run_benchmark()
+    def run(self, **kwargs: str | int | float):
+        self.init(**kwargs)
+
+        self.build_model()
+        self.run_benchmark()
 
         self._cmd['delete'].exec()
 
+    def set_log_prefix(self, prefix: str, name: str | None = None):
+        if name is None:
+            for cmd in self._cmd.values():
+                cmd.set_log_prefix(prefix)
+        else:
+            assert name in self._cmd, "Not Found"
+            self._cmd[name].set_log_prefix(prefix)
 
-    def _build_model(self):
-        self._cmd["build"].set_env(self._env)
+
+    def build_model(self):
+        print("Start Build...")
+        self._cmd["build"].set_env(self._user_env)
         self._cmd["build"].exec()
 
-    def _run_benchmark(self):
+    def run_benchmark(self):
         print("Start Benchmark...")
         
-        self._cmd["benchmark"].set_env(self._env)
+        self._cmd["benchmark"].set_env(self._user_env)
         self._cmd["benchmark"].exec()
 
 

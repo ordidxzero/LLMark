@@ -62,7 +62,8 @@ class CommandTemplate:
         args: Dict[str, str | int | float] = {}
 
         for key, value in kwargs.items():
-            self._log_filename.append(f"{key}_{value}")
+            if not isinstance(value, str) or "/" not in value:
+                self._log_filename.append(f"{key}_{value}")
             if key in self._arg_names:
                 args[key] = value
         
