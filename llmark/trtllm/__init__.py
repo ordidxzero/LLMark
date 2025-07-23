@@ -10,7 +10,7 @@ class TensorRTLLMDatasetGenerator:
         self._dataset_dir = save_dir
         self._script_path = script_path
 
-    def generate(self, name: str, tokenizer: str = "meta-llama/Llama-3.1-8B-Instruct", num_requests: int = 1024, input_len: int = 1024, output_len: int = 1024, for_build: bool = False) -> str:
+    def generate(self, name: str, tokenizer: str = "meta-llama/Llama-3.1-8B-Instruct", num_requests: int = 1024, input_len: int = 1024, input_stdev: int = 0, output_len: int = 1024, output_stdev: int = 0, for_build: bool = False) -> str:
         if for_build:
             if not name.endswith('.txt'):
                 name += '.txt'
@@ -27,10 +27,10 @@ class TensorRTLLMDatasetGenerator:
         dataset_path = (self._dataset_dir / name).absolute().as_posix()
 
 
-        cmd = f"python {self._script_path} --output {dataset_path} --tokenizer {tokenizer} token-norm-dist --num-requests {num_requests} --input-mean {input_len} --input-stdev 0 --output-mean {output_len} --output-stdev 0"
+        cmd = f"python {self._script_path} --output {dataset_path} --tokenizer {tokenizer} token-norm-dist --num-requests {num_requests} --input-mean {input_len} --input-stdev {input_stdev} --output-mean {output_len} --output-stdev {output_stdev}"
         
         if for_build:
-            cmd = f"python {self._script_path} --stdout --tokenizer {tokenizer} token-norm-dist --input-mean {input_len} --output-mean {output_len} --input-stdev 0 --output-stdev 0 --num-requests {num_requests} > {dataset_path}"
+            cmd = f"python {self._script_path} --stdout --tokenizer {tokenizer} token-norm-dist --input-mean {input_len} --output-mean {output_len} --input-stdev {input_stdev} --output-stdev {output_stdev} --num-requests {num_requests} > {dataset_path}"
         
         os.system(cmd)
 
@@ -44,7 +44,7 @@ class TensorRTLLMBenchmarkRunner(Benchmark):
 
         self._cmd["benchmark"] = CommandTemplate(benchmark_cmd)
         self._cmd["build"] = CommandTemplate(build_cmd, stdout_log=True)
-        self._cmd["delete"] = CommandTemplate(delete_cmd)
+        self._cmd["delete"] = CommandTemplate(delete_cmd, stdout_log=True)
 
     def init(self, **kwargs: str | int | float):
         self._cmd['benchmark'].set_log_dir(self._log_dir)

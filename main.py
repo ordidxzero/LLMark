@@ -2,12 +2,15 @@ from llmark.vllm import VLLMBenchmarkRunner
 from pathlib import Path
 from tqdm import tqdm
 
-SQUEEZEBITS_N1_EXP1 = True
-SQUEEZEBITS_N1_EXP2 = True
-SQUEEZEBITS_N1_EXP3 = True
+SQUEEZEBITS_N1_EXP1 = False
+SQUEEZEBITS_N1_EXP2 = False
+SQUEEZEBITS_N1_EXP3 = False
 
-SQUEEZEBITS_N2_EXP1 = True
-SQUEEZEBITS_N2_EXP2 = True
+SQUEEZEBITS_N2_EXP1 = False
+SQUEEZEBITS_N2_EXP2 = False
+
+SQUEEZEBITS_N5_EXP1 = True
+
 
 if SQUEEZEBITS_N1_EXP1:
     benchmark_cmd = "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --random-input-len {input_len} --ignore-eos --random-output-len {output_len} --num-prompts 4096"
@@ -65,3 +68,45 @@ if SQUEEZEBITS_N2_EXP2:
         for max_num_batched_tokens in MAX_NUM_OF_TOKENS:
             runner.set_log_prefix("n2_exp1_prefill_heavy")
             runner.run(max_num_seqs=max_num_seqs, max_num_batched_tokens=max_num_batched_tokens)
+
+if SQUEEZEBITS_N5_EXP1:
+    print("Start SQUEEZEBITS_N5_EXP1")
+    SUBSETS = ['1k', '2k', '4k', '8k']
+    SCHEDULER_POLICEIS = ['guaranteed_no_evict', 'max_utilization']
+    dynamic_dataset = {
+        "1k": {
+            "input_len": 512,
+            "input_stdev": 140,
+            "output_len": 1024,
+            "num_requests": 1024
+        },
+        "2k": {
+            "input_len": 1017,
+            "input_stdev": 288,
+            "output_len": 1024,
+            "num_requests": 1024
+        },
+        "4k": {
+            "input_len": 3076,
+            "input_stdev": 294,
+            "output_len": 1024,
+            "num_requests": 1024
+        },
+        "8k": {
+            "input_len": 7154,
+            "input_stdev": 284,
+            "output_len": 1024,
+            "num_requests": 1024
+        }
+    }
+
+    BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --hf-output-len 1024 --hf-split {hf_split}"
+    SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+
+    runner = VLLMBenchmarkRunner(
+        benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"VLLM_ALLOW_LONG_MAX_MODEL_LEN": "1"}
+    )
+
+    for hf_split in SUBSETS:
+        runner.set_log_prefix("n5_exp1")
+        runner.run(hf_split=hf_split)
