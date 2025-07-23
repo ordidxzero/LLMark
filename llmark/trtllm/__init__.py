@@ -1,7 +1,8 @@
 from llmark.utils import Benchmark, BenchmarkArgs, CommandTemplate
 from typing_extensions import Unpack
+from datasets import load_dataset
 from pathlib import Path
-import os, torch
+import os, torch, json
 
 class TensorRTLLMDatasetGenerator:
     _dataset_dir: Path
@@ -35,6 +36,82 @@ class TensorRTLLMDatasetGenerator:
         os.system(cmd)
 
         return dataset_path
+    
+    def _get_dynamic_sonnet_metadata(self, config):
+        input_mean = config['input_len']
+        input_stdev = config['input_stdev']
+        output_mean = config['output_len']
+        num_requests = config['num_requests']
+        max_input_len = config['max_input_len']
+        return {"workload_type": "token-norm-dist", "input_mean": input_mean, "input_stdev": input_stdev, "output_mean": output_mean, "output_stdev": 0, "num_requests": num_requests, "tokenize_vocabsize": 128000, "max_input_len": max_input_len, "max_output_len": output_mean, "workload_name": f"workload_type:token-norm-dist__input_mean:{input_mean}__input_stdev:{input_stdev}__output_mean:{output_mean}__output_stdev:0__num_requests:{num_requests}__tokenize_vocabsize:128000__max_input_len:{max_input_len}__max_output_len:{output_mean}"}
+
+    def _to_sample(self, data, output_len):
+        tok_inputs = data['tok_inputs']
+        return {"input_len": len(tok_inputs),"input_ids":tok_inputs,"output_len": output_len, "task_id": -1}
+
+    def get_dynamic_sonnet_dataset(self, hf_split: str = '1k', output_len: int = 1024):
+        build_dataset_path = self._dataset_dir / f"dynamic_sonnet_{hf_split}.txt"
+        benchmark_dataset_path = self._dataset_dir / f'dynamic_sonnet_{hf_split}.json'
+
+        if build_dataset_path.exists() and benchmark_dataset_path.exists():
+            return build_dataset_path.absolute().as_posix(), benchmark_dataset_path.absolute().as_posix()
+
+        dataset = load_dataset('squeezebits/dynamic_sonnet_llama3', split=hf_split, streaming=True)
+        dataset = dataset.shuffle()
+
+        dynamic_dataset = {
+            "1k": {
+                "input_len": 512,
+                "input_stdev": 140,
+                "output_len": 1024,
+                "num_requests": 1024,
+                "max_input_len": 773,
+            },
+            "2k": {
+                "input_len": 1017,
+                "input_stdev": 288,
+                "output_len": 1024,
+                "num_requests": 1024,
+                "max_input_len": 1536,
+            },
+            "4k": {
+                "input_len": 3076,
+                "input_stdev": 294,
+                "output_len": 1024,
+                "num_requests": 1024,
+                "max_input_len": 3601,
+            },
+            "8k": {
+                "input_len": 7154,
+                "input_stdev": 284,
+                "output_len": 1024,
+                "num_requests": 1024,
+                "max_input_len": 7709,
+            }
+        }
+
+        metadata = self._get_dynamic_sonnet_metadata(dynamic_dataset[hf_split])
+        samples = []
+
+        with open(build_dataset_path) as f:
+            for data in dataset:
+                tok_inputs = data['tok_inputs']
+                task_id = data['id']
+
+                line = {"task_id":task_id,"logits":tok_inputs,"output_tokens":output_len}
+
+                samples.append(self._to_sample(data, output_len))
+
+                f.write(json.dumps(line))
+                f.write("\n")
+
+        
+        with open(benchmark_dataset_path) as f:
+            d = {"metadata": metadata, "samples": samples}
+            json.dump(d, f)
+
+        return build_dataset_path.absolute().as_posix(), benchmark_dataset_path.absolute().as_posix()
+
 
 class TensorRTLLMBenchmarkRunner(Benchmark):
     def __init__(self, benchmark_cmd: str, build_cmd: str, delete_cmd: str = "rm -rf /tmp/meta-llama", **kwargs: Unpack[BenchmarkArgs]):

@@ -91,23 +91,23 @@ if SQUEEZEBITS_N5_EXP2:
     dynamic_dataset = {
         "1k": {
             "input_len": 512,
-            "output_len": 984,
+            "output_len": 985,
         },
         "2k": {
             "input_len": 1017,
-            "output_len": 1024,
+            "output_len": 999,
         },
         "4k": {
             "input_len": 3076,
-            "output_len": 1024,
+            "output_len": 1021,
         },
         "8k": {
             "input_len": 7154,
-            "output_len": 1024,
+            "output_len": 926,
         }
     }
 
-    BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --random-input-len {input_len} --random-output-len {output_len} --ignore-eos --num-prompt 1024"
+    BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --random-input-len {input_len} --random-output-len {output_len} --num-prompt 1024 --ignore-eos"
     SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
 
     runner = VLLMBenchmarkRunner(
@@ -119,3 +119,4 @@ if SQUEEZEBITS_N5_EXP2:
         input_len = dynamic_dataset[hf_split]['input_len']
         output_len = dynamic_dataset[hf_split]['output_len']
         runner.run(input_len=input_len, output_len=output_len)
+        break
