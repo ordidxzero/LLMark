@@ -89,6 +89,7 @@ class VLLMBenchmarkRunner(Benchmark):
             print("Terminated...")
 
         self._terminate_server = terminate
+        log_file.close()
 
     def run_benchmark(self):
         print("Start Benchmark...")

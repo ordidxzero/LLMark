@@ -9,8 +9,8 @@ SQUEEZEBITS_N1_EXP3 = False
 SQUEEZEBITS_N2_EXP1 = False
 SQUEEZEBITS_N2_EXP2 = False
 
-SQUEEZEBITS_N5_EXP1 = False
-SQUEEZEBITS_N5_EXP2 = True
+SQUEEZEBITS_N5_EXP1 = True
+SQUEEZEBITS_N5_EXP2 = False
 
 
 if SQUEEZEBITS_N1_EXP1:
@@ -119,4 +119,3 @@ if SQUEEZEBITS_N5_EXP2:
         input_len = dynamic_dataset[hf_split]['input_len']
         output_len = dynamic_dataset[hf_split]['output_len']
         runner.run(input_len=input_len, output_len=output_len)
-        break
