@@ -53,6 +53,7 @@ class VLLMAnalyzer(LogAnalyzer):
         plt.bar(x, blocks, width=1.0, align='edge')
 
         plt.ylabel('Percentage')
+        plt.ylim(0, 100)
         plt.title('GPU KV Cache Usage')
         plt.grid(axis='y', linestyle='--', alpha=0.7)
         plt.tight_layout()
@@ -135,6 +136,7 @@ class VLLMAnalyzer(LogAnalyzer):
                     "avg_prompt_latency": self._mean(prompt_state['latencies']),
                     "avg_generation_latency": self._mean(generation_state['latencies']),
                     "preemption_seqs": sum(rest_state['preemption_seqs']),
+                    "gpu_total_block": rest_state['gpu_total_block'],
                     "prefill_frequency": self._mean(prompt_iter_gaps)
                 }
 
