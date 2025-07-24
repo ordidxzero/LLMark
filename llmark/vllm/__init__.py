@@ -1,4 +1,4 @@
-import subprocess, time, torch
+import subprocess, time, torch, gc
 from typing_extensions import Unpack, Callable
 from pathlib import Path
 from llmark.utils import (
@@ -86,9 +86,13 @@ class VLLMBenchmarkRunner(Benchmark):
             log_file.close()
             server_process.terminate()
             server_process.wait(timeout=60)
+            torch.cuda.empty_cache()
+            gc.collect()
+
             print("Terminated...")
 
         self._terminate_server = terminate
+        log_file.close()
 
     def run_benchmark(self):
         print("Start Benchmark...")
