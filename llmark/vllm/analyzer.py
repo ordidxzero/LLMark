@@ -84,22 +84,11 @@ class VLLMAnalyzer(LogAnalyzer):
                 "gpu_kv_cache_usage": []
             }
             with open(logfile_path, "r") as logfile:
-                is_end_test_request = None
-                test_end_index = 0
                 for line in logfile:
                     if "metrics.py" in line:
                         iter_num, prompt_throughput, generation_throughput, gpu_kv_cache_usage, gpu_total_block, gpu_free_block, prompt_seqs, generation_seqs, preemption_seqs, latency = self._parse_line(line)
                         rest_state['preemption_seqs'].append(preemption_seqs)
                         rest_state['gpu_kv_cache_usage'].append(gpu_kv_cache_usage)
-
-                        if is_end_test_request != True:
-                            test_end_index += 1
-
-                        if prompt_seqs == 0 and generation_seqs == 0:
-                            if is_end_test_request is None:
-                                is_end_test_request = False
-                            elif is_end_test_request == False:
-                                is_end_test_request = True
 
                         if rest_state['gpu_total_block'] == -1:
                             rest_state['gpu_total_block'] = gpu_total_block
@@ -123,7 +112,7 @@ class VLLMAnalyzer(LogAnalyzer):
 
             dist_dir = save_dir if save_dir is not None else self._log_dir
 
-            self.plot_gpu_blocks(rest_state['gpu_kv_cache_usage'][test_end_index:], logfile_path, save_dir)
+            self.plot_gpu_blocks(rest_state['gpu_kv_cache_usage'], logfile_path, save_dir)
 
             if not dist_dir.exists():
                 dist_dir.mkdir(parents=True)
