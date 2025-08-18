@@ -9,9 +9,10 @@ SQUEEZEBITS_N1_EXP3 = False
 SQUEEZEBITS_N2_EXP1 = False
 SQUEEZEBITS_N2_EXP2 = False
 
-SQUEEZEBITS_N5_EXP1 = True
-SQUEEZEBITS_N5_EXP2 = False
-
+SQUEEZEBITS_N5_EXP1 = False
+SQUEEZEBITS_N5_EXP2 = True
+SQUEEZEBITS_N5_EXP1_1 = False
+SQUEEZEBITS_N5_EXP2_1 = False
 
 if SQUEEZEBITS_N1_EXP1:
     benchmark_cmd = "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --random-input-len {input_len} --ignore-eos --random-output-len {output_len} --num-prompts 4096"
@@ -73,49 +74,109 @@ if SQUEEZEBITS_N2_EXP2:
 if SQUEEZEBITS_N5_EXP1:
     print("Start SQUEEZEBITS_N5_EXP1")
     SUBSETS = ['1k', '2k', '4k', '8k']
+    SUBSETS = reversed(SUBSETS)
 
     BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --hf-output-len 1024 --num-prompt 1024 --hf-split {hf_split}"
-    SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+    # SERVER_CMD = "vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+    SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384 --enforce-eager"
 
     runner = VLLMBenchmarkRunner(
-        benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"VLLM_ALLOW_LONG_MAX_MODEL_LEN": "1", "CUDA_VISIBLE_DEVICES": '3'}
+        benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"VLLM_ALLOW_LONG_MAX_MODEL_LEN": "1", "CUDA_VISIBLE_DEVICES": '0'}
     )
 
     for hf_split in SUBSETS:
-        runner.set_log_prefix("n5_exp1")
+        runner.set_log_prefix("n5_profiling_dynamic")
+        runner.run(hf_split=hf_split)
+
+if SQUEEZEBITS_N5_EXP1_1:
+    print("Start SQUEEZEBITS_N5_EXP1_1")
+    SUBSETS = ['4k']
+    SUBSETS = reversed(SUBSETS)
+
+    BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --hf-output-len 896 --num-prompt 1024 --hf-split {hf_split}"
+    # SERVER_CMD = "vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+    SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384 --enforce-eager"
+
+    runner = VLLMBenchmarkRunner(
+        benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"VLLM_ALLOW_LONG_MAX_MODEL_LEN": "1", "CUDA_VISIBLE_DEVICES": '0'}
+    )
+
+    for hf_split in SUBSETS:
+        runner.set_log_prefix("n5_profile_dynamic")
         runner.run(hf_split=hf_split)
 
 if SQUEEZEBITS_N5_EXP2:
     print("Start SQUEEZEBITS_N5_EXP2")
     SUBSETS = ['1k', '2k', '4k', '8k']
+    SUBSETS = list(reversed(SUBSETS))
     dynamic_dataset = {
         "1k": {
-            "input_len": 512,
-            "output_len": 985,
+            "input_len": 503,
+            "output_len": 828,
         },
         "2k": {
-            "input_len": 1017,
-            "output_len": 999,
+            "input_len": 1008,
+            "output_len": 843,
         },
         "4k": {
-            "input_len": 3076,
-            "output_len": 1021,
+            "input_len": 3067,
+            "output_len": 858,
         },
         "8k": {
-            "input_len": 7154,
-            "output_len": 926,
+            "input_len": 7145,
+            "output_len": 803,
         }
     }
 
-    BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --random-input-len {input_len} --random-output-len {output_len} --num-prompt 1024 --ignore-eos"
-    SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+    BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --ignore-eos --hf-input-len {input_len} --hf-output-len {output_len} --hf_split {hf_split} --num-prompt 1024"
+    # BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt 1024"
+    # SERVER_CMD = "vllm serve --model meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+    SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384 --enforce-eager"
 
     runner = VLLMBenchmarkRunner(
-        benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"VLLM_ALLOW_LONG_MAX_MODEL_LEN": "1", "CUDA_VISIBLE_DEVICES": '3'}
+        benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"VLLM_ALLOW_LONG_MAX_MODEL_LEN": "1", "CUDA_VISIBLE_DEVICES": '0'}
     )
 
     for hf_split in SUBSETS:
-        runner.set_log_prefix("n5_exp2")
+        runner.set_log_prefix("n5_profiling_fixed")
         input_len = dynamic_dataset[hf_split]['input_len']
         output_len = dynamic_dataset[hf_split]['output_len']
-        runner.run(input_len=input_len, output_len=output_len)
+        runner.run(hf_split=hf_split, input_len=input_len, output_len=output_len)
+
+if SQUEEZEBITS_N5_EXP2_1:
+    print("Start SQUEEZEBITS_N5_EXP2_1")
+    SUBSETS = ['2k']
+    SUBSETS = list(reversed(SUBSETS))
+    dynamic_dataset = {
+        "1k": {
+            "input_len": 503,
+            "output_len": 828,
+        },
+        "2k": {
+            "input_len": 1008,
+            "output_len": 600,
+        },
+        "4k": {
+            "input_len": 3067,
+            "output_len": 858,
+        },
+        "8k": {
+            "input_len": 7145,
+            "output_len": 801,
+        }
+    }
+
+    BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --ignore-eos --hf-input-len {input_len} --hf-output-len {output_len} --hf_split {hf_split} --num-prompt 1024"
+    # BENCHMARK_CMD= "uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt 1024"
+    # SERVER_CMD = "vllm serve --model meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+    SERVER_CMD = "vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests --max-num-seqs 256 --max-num-batched-tokens 16384 --max-model-len 16384"
+
+    runner = VLLMBenchmarkRunner(
+        benchmark_cmd=BENCHMARK_CMD, server_cmd=SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"VLLM_ALLOW_LONG_MAX_MODEL_LEN": "1", "CUDA_VISIBLE_DEVICES": '2'}
+    )
+
+    for hf_split in SUBSETS:
+        runner.set_log_prefix("n5_additional_fixed")
+        input_len = dynamic_dataset[hf_split]['input_len']
+        output_len = dynamic_dataset[hf_split]['output_len']
+        runner.run(hf_split=hf_split, input_len=input_len, output_len=output_len)
