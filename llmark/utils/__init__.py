@@ -128,7 +128,12 @@ class CommandTemplateV2:
         """
         for key, value in kwargs.items():
             if key in ['dir', 'prefix', 'use_stdout']:
-                self._log_state[key] = value # type: ignore
+                if key == 'dir':
+                    self._log_state.dir = value
+                elif key == 'prefix':
+                    self._log_state.prefix = value
+                else:
+                    self._log_state.use_stdout = value
     
     def _extract_template_vars(self) -> List[str]:
         """
@@ -191,6 +196,10 @@ class CommandTemplateV2:
     @property
     def log_dir(self) -> Path:
         return self._log_state.dir
+    
+    @property
+    def log_path(self) -> Path:
+        return self._log_state.get_path()
 
 class BenchmarkV2:
     runner_type: Optional[RunnerType]
@@ -227,10 +236,14 @@ class BenchmarkV2:
             cmd.format(**kwargs)
 
         self._is_ready = True
+
+    def set_prefix(self, prefix: str):
+        for _, cmd in self._cmd.items():
+            cmd.set_log(prefix=prefix)
     
     def _set_runner_type(self, runner_type: RunnerType):
         """Runner Type을 지정하는 메서드. __init__ 메서드에서 반드시 호출되어야 한다"""
-        assert runner_type in ["vllm", "tensorrt_llm", "triton", "rbln"], "Invalid RunnerType"
+        assert runner_type in ["vllm", "tensorrt_llm", "triton", "vllm_rbln"], "Invalid RunnerType"
         self.runner_type = runner_type
 
     @staticmethod

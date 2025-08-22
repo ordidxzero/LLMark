@@ -36,8 +36,17 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
         self._cmd["server"] = server_cmd
 
         self._cmd["benchmark"].set_log(dir=self._log_dir / "benchmark")
-        self._cmd["server"].set_log(dir=self._log_dir / "server")
+        self._cmd["server"].set_log(dir=self._log_dir / "server", use_stdout=True)
         self._cmd["benchmark"].set_envs(**self._user_env)
+
+    def set_benchmark_cmd(self, cmd: CommandTemplateV2):
+        self._cmd['benchmark'] = cmd
+        self._cmd['benchmark'].set_log(dir=self._log_dir / 'benchmark')
+        self._cmd["benchmark"].set_envs(**self._user_env)
+
+    def set_server_cmd(self, cmd: CommandTemplateV2):
+        self._cmd['server'] = cmd
+        self._cmd["server"].set_log(dir=self._log_dir / "server", use_stdout=True)
 
     def run_server(self):
         assert self._is_ready == True, "Runner is not initalized. Invoke init()"
@@ -49,9 +58,9 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
             self._server_process = None
 
         print("=" * 30)
-        print(f"Run server!! Command: {self._cmd['server'].as_string()}")
+        print(f"Server Command: {self._cmd['server'].as_string()}")
         print("=" * 30)
-        log_file = open(self._cmd["server"].log_dir.absolute().as_posix(), "w")
+        log_file = open(self._cmd["server"].log_path.absolute().as_posix(), "w")
 
         server_process = subprocess.Popen(
             args=self._cmd["server"].as_string().split(" "),
@@ -74,7 +83,9 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
         log_file.close()
 
     def run_benchmark(self):
-        print("Start Benchmark...")
+        print("=" * 30)
+        print(f"Benchmark Command: {self._cmd['benchmark'].as_string()}")
+        print("=" * 30)
         self._cmd["benchmark"].run()
 
     def run(self, **kwargs: str | int | float):
@@ -97,6 +108,36 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
         self._terminate_server()
         self._is_ready = False
 
+class RBLNVLLMBenchmarkRunner(BenchmarkV2):
+    _server_process: subprocess.Popen[str] | None
+    _terminate_server: Callable[..., None] | None
+
+    def __init__(
+        self, benchmark_cmd: CommandTemplateV2, server_cmd: CommandTemplateV2, **kwargs: Unpack[BenchmarkArgs]
+    ):
+        if not BenchmarkV2.is_rbln():
+            raise Exception("This BenchmarkRunner only support Rebellions NPU.")
+
+        if not find_package("vllm"):
+            raise Exception("vLLM is not installed")
+        
+        print("=" * 30)
+        print("Current vLLM Version: ", find_package_version("vllm"))
+        print("=" * 30)
+
+        super().__init__(**kwargs)
+
+        self._set_runner_type("vllm_rbln")
+
+        self._server_process = None
+        self._terminate_server = None
+
+        self._cmd["benchmark"] = benchmark_cmd
+        self._cmd["server"] = server_cmd
+
+        self._cmd["benchmark"].set_log(dir=self._log_dir / "benchmark")
+        self._cmd["server"].set_log(dir=self._log_dir / "server", use_stdout=True)
+        self._cmd["benchmark"].set_envs(**self._user_env)
 
 class VLLMBenchmarkRunner(Benchmark):
     _server_process: subprocess.Popen[str] | None
