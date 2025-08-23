@@ -1,7 +1,7 @@
 from llmark.vllm import VLLMBenchmarkRunner, VLLMBenchmarkRunnerV2, CommandTemplateV2
 from pathlib import Path
 from tqdm import tqdm
-import argparse
+import argparse, requests, json
 
 SQUEEZEBITS_N1_EXP1 = False
 SQUEEZEBITS_N1_EXP2 = False
@@ -187,38 +187,56 @@ if SQUEEZEBITS_N5_EXP2_1:
 def run_ep6_experiment1(args: argparse.Namespace):
     cuda_visible_devices = args.devices
     disable_tqdm = args.disable_tqdm
-    QUANTIZED_MODEL = ['Llama-3.1-8B-Instruct-GPTQ-INT4', 'Llama-3.1-8B-Instruct-AWQ-INT4']
+    QUANTIZED_MODEL = ['Llama-3.1-8B-Instruct-AWQ-Official-INT4']
     QUANTIZATION_METHOD = {
         'Llama-3.1-8B-Instruct-AWQ-INT4': ['awq', 'awq_marlin'],
         'Llama-3.1-8B-Instruct-GPTQ-INT4': ['gptq_marlin', 'gptq'],
     }
     CONFIGURATION = [(256, 1), (256, 4), (256, 16), (256, 64), (1024, 256)]
     DATASETS = {
-        "decode_heavy": (128, 2024),
-        "prefill_heavy": (2024, 128)
+        "decode_heavy": (128, 2048),
+        "prefill_heavy": (2048, 128)
     }
     FP16_SERVER_CMD = CommandTemplateV2('vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs}')
     QUANTIZED_SERVER_CMD = CommandTemplateV2('vllm serve ./quantized_model/{model} --dtype float16 --quantization {quantization} --disable-log-requests --max-num-seqs {max_num_seqs} --enforce-eager')
-    BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model {model} --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt {num_prompts}')
+    QUANTIZED_SERVER_CMD = CommandTemplateV2('vllm serve ./quantized_model/{model} --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs} --enforce-eager')
+    QUANTIZED_BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend openai-chat --endpoint /v1/chat/completions --model ./quantized_model/{model} --tokenizer ./quantized_model/{model} --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt {num_prompts}')
+    BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Llama-3.1-8B-Instruct --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt {num_prompts}')
 
-    runner = VLLMBenchmarkRunnerV2(benchmark_cmd=BENCHMARK_CMD ,server_cmd=QUANTIZED_SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices})
+    runner = VLLMBenchmarkRunnerV2(benchmark_cmd=QUANTIZED_BENCHMARK_CMD ,server_cmd=QUANTIZED_SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices})
 
     pbar = None
     if not disable_tqdm:
-        pbar = tqdm(total=(len(QUANTIZED_MODEL) * 2 + 1) * len(DATASETS) * len(CONFIGURATION))
+        # pbar = tqdm(total=(len(QUANTIZED_MODEL) * 2 + 1) * len(DATASETS) * len(CONFIGURATION))
+        pbar = tqdm(total=(len(QUANTIZED_MODEL) + 1) * len(DATASETS) * len(CONFIGURATION))
 
     # Quantized Model
     for model in QUANTIZED_MODEL:
-        for quantization_method in QUANTIZATION_METHOD[model]:
-            for key, value in DATASETS.items():
-                input_len, output_len = value
-                runner.set_prefix(f'ep6_{model}_{key}')
-                for num_prompts, max_num_seqs in CONFIGURATION:
-                    runner.run(model=model, quantization=quantization_method, max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
+        for key, value in DATASETS.items():
+            input_len, output_len = value
+            runner.set_prefix(f'ep6_{key}')
+            for num_prompts, max_num_seqs in CONFIGURATION:
+                runner.run(model=model, max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
+                if pbar is not None:
+                    pbar.update(1)
 
-                    if pbar is not None:
-                        pbar.update(1)
+                break
+            break
+        break
 
+    return
+
+    # for model in QUANTIZED_MODEL:
+    #     for quantization_method in QUANTIZATION_METHOD[model]:
+    #         for key, value in DATASETS.items():
+    #             input_len, output_len = value
+    #             runner.set_prefix(f'ep6_{model}_{key}')
+    #             for num_prompts, max_num_seqs in CONFIGURATION:
+    #                 runner.run(model=model, quantization=quantization_method, max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
+
+    #                 if pbar is not None:
+    #                     pbar.update(1)
+    
     # FP16 Model
     runner.set_server_cmd(FP16_SERVER_CMD)
     for key, value in DATASETS.items():
@@ -229,6 +247,7 @@ def run_ep6_experiment1(args: argparse.Namespace):
 
             if pbar is not None:
                 pbar.update(1)
+
 
 
 def main(args: argparse.Namespace):

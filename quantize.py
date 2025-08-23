@@ -142,7 +142,7 @@ def main(args: argparse.Namespace):
         from llmcompressor import oneshot
         from llmcompressor.utils import dispatch_for_generation
         # GPTQ Marlin Quantization with LLM-Compressor
-        quantized_model_id = 'Llama-3.1-8B-Instruct-GPTQ-INT4'
+        quantized_model_id = 'Llama-3.1-8B-Instruct-GPTQ-Marlin-INT4'
 
         model_id = 'meta-llama/Llama-3.1-8B-Instruct'
         model = AutoModelForCausalLM.from_pretrained(model_id)
