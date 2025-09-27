@@ -8,7 +8,8 @@ from llmark.utils import (
     BenchmarkV2,
     BenchmarkArgs,
     CommandTemplate,
-    CommandTemplateV2
+    CommandTemplateV2,
+    CommandArgs
 )
 
 class VLLMBenchmarkRunnerV2(BenchmarkV2):
@@ -16,10 +17,11 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
     _terminate_server: Callable[..., None] | None
 
     def __init__(
-        self, benchmark_cmd: CommandTemplateV2, server_cmd: CommandTemplateV2, **kwargs: Unpack[BenchmarkArgs]
+        self, benchmark_cmd: CommandTemplateV2, server_cmd: CommandTemplateV2, enable_nvtx: bool = False, **kwargs: Unpack[BenchmarkArgs]
     ):
         if not find_package("vllm"):
             raise Exception("vLLM is not installed")
+        
         
         print("=" * 30)
         print("Current vLLM Version: ", find_package_version("vllm"))
@@ -31,6 +33,7 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
 
         self._server_process = None
         self._terminate_server = None
+        self._enable_nvtx = enable_nvtx
 
         self._cmd["benchmark"] = benchmark_cmd
         self._cmd["server"] = server_cmd
@@ -101,9 +104,11 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
                 break
             time.sleep(1)
 
-        if "VLLM_TORCH_PROFILER_DIR" in self._user_env:
+        ENABLE_NSYS_PROFILE = self._cmd["server"].as_string().startswith("nsys profile")
+
+        if "VLLM_TORCH_PROFILER_DIR" in self._user_env or ENABLE_NSYS_PROFILE:
             print("Wait to flush out")
-            time.sleep(1800)
+            time.sleep(180)
 
         self._terminate_server()
         self._is_ready = False

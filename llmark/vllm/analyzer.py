@@ -140,7 +140,7 @@ class VLLMAnalyzer(LogAnalyzer):
                         profiling_state[stage]['lm_head'].append(lm_head_time)
                         continue
 
-                    if "metrics.py" in line:
+                    if "metrics.py" in line and 'iter:' in line:
                         iter_num, prompt_throughput, generation_throughput, gpu_kv_cache_usage, gpu_total_block, gpu_free_block, running_seqs, prompt_seqs, generation_seqs, preemption_seqs, latency = self._parse_iter_line(line)
                         rest_state['preemption_seqs'].append(preemption_seqs)
                         rest_state['gpu_kv_cache_usage'].append(gpu_kv_cache_usage)
@@ -215,18 +215,18 @@ class VLLMAnalyzer(LogAnalyzer):
                         "avg_group_latency": prompt_group_avg_latency,
                         "group_num": prompt_group_num
                     },
-                    "profiling": {
-                        "prefill": {
-                            "attn": self._mean(profiling_state["prefill"]['attn']),
-                            "mlp": self._mean(profiling_state["prefill"]['mlp']),
-                            "lm_head": self._mean(profiling_state["prefill"]['lm_head']),
-                        },
-                        "decode": {
-                            "attn": self._mean(profiling_state["decode"]['attn']),
-                            "mlp": self._mean(profiling_state["decode"]['mlp']),
-                            "lm_head": self._mean(profiling_state["decode"]['lm_head']),
-                        }
-                    }
+                    # "profiling": {
+                    #     "prefill": {
+                    #         "attn": self._mean(profiling_state["prefill"]['attn']),
+                    #         "mlp": self._mean(profiling_state["prefill"]['mlp']),
+                    #         "lm_head": self._mean(profiling_state["prefill"]['lm_head']),
+                    #     },
+                    #     "decode": {
+                    #         "attn": self._mean(profiling_state["decode"]['attn']),
+                    #         "mlp": self._mean(profiling_state["decode"]['mlp']),
+                    #         "lm_head": self._mean(profiling_state["decode"]['lm_head']),
+                    #     }
+                    # }
                 }
 
                 json.dump(content, output_file, indent=2)

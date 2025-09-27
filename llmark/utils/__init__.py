@@ -2,7 +2,7 @@ import importlib.util
 import os, socket, subprocess, torch
 from importlib.metadata import version
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Literal, TypedDict, List
+from typing import Optional, Dict, Literal, TypedDict, List, Callable
 from typing_extensions import NotRequired
 from pathlib import Path
 from string import Formatter, Template
@@ -39,6 +39,8 @@ def find_package(pkg: str, ver: Optional[str] = None, raise_error: bool = True):
     
     return True
 
+CommandArgs = Dict[str, str | int | float]
+
 @dataclass
 class LogState:
     dir: Path = Path(".")
@@ -46,10 +48,14 @@ class LogState:
     device_prefix: str = ''
     use_stdout: bool = False
     filename: Optional[str] = None
-    valid_args: Dict[str, str | int | float] = field(default_factory=dict)
+    valid_args: CommandArgs = field(default_factory=dict)
+    mapping: Optional[Callable] = None
 
     def set_filename(self):
         filename = []
+
+        if self.mapping is not None:
+            self.valid_args = self.mapping(self.valid_args.copy())
 
         for key, value in self.valid_args.items():
             filename.append(f"{key}_{value}")
@@ -82,11 +88,11 @@ class CommandTemplateV2:
     _log_state: LogState
     _arg_names: List[str]
     _cmd: Optional[str]
-    def __init__(self, template: str, partial_variables: Dict[str, str | int | float] = {}):
+    def __init__(self, template: str, partial_variables: CommandArgs = {}, mapping: Optional[Callable[[CommandArgs], CommandArgs]] = None):
         self._skeleton = Template(template)
-        self._skeleton = Template(self._skeleton.safe_substitute(partial_variables))
+        self._skeleton = Template(self._skeleton.safe_substitute(**partial_variables))
         self._envs = {}
-        self._log_state = LogState(valid_args=partial_variables)
+        self._log_state = LogState(valid_args=partial_variables, mapping=mapping)
         self._arg_names = self._extract_template_vars()
         self._cmd = None
 
@@ -97,14 +103,13 @@ class CommandTemplateV2:
         Args:
             **kwrags (str | int | float): 템플릿에 삽입될 변수들
         """
-        args: Dict[str, str | int | float] = {}
+        args:CommandArgs = {}
 
         for key, value in kwargs.items():
             if not isinstance(value, str) or "/" not in value:
                 self._log_state.valid_args[key] = value
             if key in self._arg_names:
                 args[key] = value
-
         self._cmd = self._skeleton.template.format(**args)
 
     def set_envs(self, **envs: str):
@@ -129,11 +134,11 @@ class CommandTemplateV2:
         for key, value in kwargs.items():
             if key in ['dir', 'prefix', 'use_stdout']:
                 if key == 'dir':
-                    self._log_state.dir = value
+                    self._log_state.dir = value # type: ignore
                 elif key == 'prefix':
-                    self._log_state.prefix = value
+                    self._log_state.prefix = value # type: ignore
                 else:
-                    self._log_state.use_stdout = value
+                    self._log_state.use_stdout = value # type: ignore
     
     def _extract_template_vars(self) -> List[str]:
         """
