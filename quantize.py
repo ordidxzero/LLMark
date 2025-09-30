@@ -133,7 +133,7 @@ def main(args: argparse.Namespace):
 
         model.quantize(examples)
 
-        model.save_quantized(SAVE_DIR)
+        model.save_quantized(SAVE_DIR, use_safetensors=True)
 
         return
     

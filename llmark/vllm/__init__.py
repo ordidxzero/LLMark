@@ -106,7 +106,7 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
 
         ENABLE_NSYS_PROFILE = self._cmd["server"].as_string().startswith("nsys profile")
 
-        if "VLLM_TORCH_PROFILER_DIR" in self._user_env or ENABLE_NSYS_PROFILE:
+        if "VLLM_TORCH_PROFILER_DIR" in self._user_env:
             print("Wait to flush out")
             time.sleep(180)
 

@@ -13,5 +13,4 @@ RUN echo "deb http://developer.download.nvidia.com/devtools/repos/ubuntu$(source
 RUN apt update && apt install -y nsight-systems-cli
 RUN uv venv /.venv --python 3.10 --seed && source /.venv/bin/activate && uv pip install vllm==0.6.5 matplotlib datasets==4.0.0
 
-
-CMD ["source", "/.venv/bin/activate"]
+ENTRYPOINT ["source", "/.venv/bin/activate"]

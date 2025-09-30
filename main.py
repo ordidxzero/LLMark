@@ -410,7 +410,9 @@ def run_ep6_experiment1(args: argparse.Namespace):
     quantization_method = args.quantization
     QUANTIZED_MODEL = {
         'awq': 'Llama-3.1-8B-Instruct-AWQ-Official-INT4',
-        'awq_marlin': 'Llama-3.1-8B-Instruct-AWQ-Official-INT4'
+        'awq_marlin': 'Llama-3.1-8B-Instruct-AWQ-Official-INT4',
+        'gptq_exllamav2': 'Llama-3.1-8B-Instruct-GPTQ-ExLlamaV2-INT4',
+        'gptq_marlin': 'Llama-3.1-8B-Instruct-GPTQ-Marlin-INT4',
     }
 
     MODEL_CONFIGURATION = {
@@ -422,29 +424,25 @@ def run_ep6_experiment1(args: argparse.Namespace):
             'dtype': 'auto',
             "quantization": None,
         },
-        'gptq': {
-            'dtype': 'auto',
-            'quatization': 'gptq',
-        },
         'gptq_marlin': {
             'dtype': 'auto',
-            'quatization': 'gptq_marlin',
+            'quantization': None,
         },
         'gptq_exllamav2': {
             'dtype': 'auto',
-            "quantization": None,
+            "quantization": 'gptq',
         }
     }
 
     CONFIGURATION = [(256, 1), (256, 4), (256, 16), (256, 64), (1024, 256)]
     DATASETS = {
         "decode_heavy": (128, 2048),
-        "prefill_heavy": (2048, 128)
+        # "prefill_heavy": (2048, 128)
     }
     model = QUANTIZED_MODEL[quantization_method]
     partial_args = MODEL_CONFIGURATION[quantization_method]
     
-    def name_mapping(d: CommandArgs) -> CommandArgs:
+    def args_filter(d: CommandArgs) -> CommandArgs:
         if 'model' in d:
             del d['model']
 
@@ -453,12 +451,25 @@ def run_ep6_experiment1(args: argparse.Namespace):
 
         return d
     
+    def rename(device_prefix: str, prefix: str, d: CommandArgs) -> str:
+        quantization_method = d['quantization']
+        max_num_seqs = d['max_num_seqs']
+        num_prompts = d['num_prompts']
+        filename = f'{quantization_method}_max_num_seqs_{max_num_seqs}_num_prompts_{num_prompts}'
 
+        if prefix != '':
+            filename = f'{device_prefix}_{prefix}_{filename}'
+        else:
+            filename = f'{device_prefix}_{filename}'
 
-    QUANTIZED_SERVER_CMD = CommandTemplateV2('vllm serve ./quantized_model/{model} --dtype $dtype --quantization $quantization --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager', partial_variables=partial_args, mapping=name_mapping)
-    QUANTIZED_BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model ./quantized_model/{model} --tokenizer ./quantized_model/{model} --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt {num_prompts}', mapping=name_mapping)
+        return filename + '.log'
 
-    runner = VLLMBenchmarkRunnerV2(benchmark_cmd=QUANTIZED_BENCHMARK_CMD ,server_cmd=QUANTIZED_SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices})
+    
+    # NSYS_QUANTIZED_SERVER_CMD = CommandTemplateV2('nsys profile -t cuda,nvtx,osrt --cuda-memory-usage=true -o ep6_awq_{key}_max_num_seqs_{max_num_seqs}_report --force-overwrite=true --sample=none --cpuctxsw=none --delay 50 vllm serve ./quantized_model/{model} --dtype $dtype --quantization $quantization --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager', partial_variables=partial_args, mapping=name_mapping)
+    QUANTIZED_BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model ./quantized_model/{model} --tokenizer ./quantized_model/{model} --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --ignore-eos --hf-input-len {input_len} --hf-output-len {output_len} --hf_split 1k --num-prompt {num_prompts}', filtering=args_filter, mapping=rename)
+    NSYS_QUANTIZED_SERVER_CMD = CommandTemplateV2('nsys profile -t cuda,nvtx -o ep6_{key}_max_num_seqs_{max_num_seqs}_report.nsys-rep --force-overwrite=true --sample=none --cpuctxsw=none --delay 50 vllm serve ./quantized_model/{model} --dtype $dtype --quantization $quantization --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager', partial_variables=partial_args, filtering=args_filter, mapping=rename)
+    QUANTIZED_SERVER_CMD = CommandTemplateV2('vllm serve ./quantized_model/{model} --dtype $dtype --quantization $quantization --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False', partial_variables=partial_args, filtering=args_filter, mapping=rename)
+    runner = VLLMBenchmarkRunnerV2(benchmark_cmd=QUANTIZED_BENCHMARK_CMD ,server_cmd=QUANTIZED_SERVER_CMD, log_dir=Path(f"./output/vLLM/{quantization_method}"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices})
 
     pbar = tqdm(total=len(DATASETS) * len(CONFIGURATION))
     if disable_tqdm:
@@ -469,22 +480,19 @@ def run_ep6_experiment1(args: argparse.Namespace):
         input_len, output_len = value
         runner.set_prefix(f'ep6_{key}')
         for num_prompts, max_num_seqs in CONFIGURATION:
-            if key == 'decode_heavy':
+            if max_num_seqs != 4:
                 continue
 
-            if max_num_seqs != 64:
-                continue
-
-            runner.run(quantization=quantization_method, model=model, max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
+            runner.run(quantization=quantization_method, key=key, model=model, max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
             if pbar is not None:
                 pbar.update(1)
 
 
 def run_ep6_experiment2(args: argparse.Namespace):
-    CONFIGURATION = [(256, 1), (256, 4), (256, 16), (256, 64), (1024, 256)]
+    CONFIGURATION = list(reversed([(256, 1), (256, 4), (256, 16), (256, 64), (1024, 256)]))
     DATASETS = {
-        # "decode_heavy": (128, 2048),
-        "prefill_heavy": (2048, 128)
+        # "prefill_heavy": (2048, 128),
+        "decode_heavy": (128, 2048),
     }
 
     NSYS_CONFIG = {
@@ -527,32 +535,34 @@ def run_ep6_experiment2(args: argparse.Namespace):
     cuda_visible_devices = args.devices
     disable_tqdm = args.disable_tqdm
 
-    def name_mapping(d: CommandArgs):
-        a = ['key', 'model', 'num_prompts', 'input_len', 'output_len']
+    def args_filter(d: CommandArgs):
+        a = ['model', 'key', 'input_len', 'output_len']
         
         for k in a:
             if k in d:
                 del d[k]
 
         return d
-
-    FP16_SERVER_CMD = CommandTemplateV2('vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager')
-    NSYS_FP16_SERVER_CMD = CommandTemplateV2('nsys profile -t cuda,nvtx -o ep6_default_{key}_max_num_seqs_{max_num_seqs}_report --cuda-memory-usage=true --force-overwrite=true --sample=none --cpuctxsw=none --delay 120 --duration 120 --kill none vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager', mapping=name_mapping)
-    BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Llama-3.1-8B-Instruct --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt {num_prompts}', mapping=name_mapping)
     
-    runner = VLLMBenchmarkRunnerV2(benchmark_cmd=BENCHMARK_CMD ,server_cmd=NSYS_FP16_SERVER_CMD, log_dir=Path("./output/vLLM"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices})
+
+    FP16_SERVER_CMD = CommandTemplateV2('vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager', filtering=args_filter)
+    FP16_SERVER_CMD = CommandTemplateV2('vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False', filtering=args_filter)
+    NSYS_FP16_SERVER_CMD = CommandTemplateV2('nsys profile -t cuda,nvtx -o ep6_default_{key}_max_num_seqs_{max_num_seqs}_report.nsys-rep --force-overwrite=true --sample=none --cpuctxsw=none --delay 50 vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager', filtering=args_filter)
+    NSYS_FP16_SERVER_CMD = CommandTemplateV2('vllm serve meta-llama/Llama-3.1-8B-Instruct --dtype float16 --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False --enforce-eager', filtering=args_filter)
+    BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model meta-llama/Llama-3.1-8B-Instruct --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --ignore-eos --hf-input-len {input_len} --hf-output-len {output_len} --hf_split 1k --num-prompt {num_prompts}', filtering=args_filter)
+    
+    runner = VLLMBenchmarkRunnerV2(benchmark_cmd=BENCHMARK_CMD, server_cmd=FP16_SERVER_CMD, log_dir=Path("./output/vLLM/FP16"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices})
 
     pbar = tqdm(total=len(DATASETS) * len(CONFIGURATION))
     if disable_tqdm:
         pbar = None
 
     for key, value in DATASETS.items():
-        if key == 'decode_heavy':
-            continue
         input_len, output_len = value
         runner.set_prefix(f'ep6_{key}_default')
         for num_prompts, max_num_seqs in CONFIGURATION:
-            if max_num_seqs != 16:
+
+            if max_num_seqs == 256:
                 continue
 
             runner.run(model='meta-llama/Llama-3.1-8B-Instruct',key=key, max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
@@ -578,7 +588,15 @@ def main(args: argparse.Namespace):
 
     if episode == '6':
         if num_exp == '1':
+            args.quantization = 'awq'
             run_ep6_experiment1(args)
+            args.quantization = 'awq_marlin'
+            run_ep6_experiment1(args)
+            args.quantization = 'gptq_exllamav2'
+            run_ep6_experiment1(args)
+            args.quantization = 'gptq_marlin'
+            run_ep6_experiment1(args)
+            run_ep6_experiment2(args)
         if num_exp == '2':
             run_ep6_experiment2(args)
 
@@ -588,7 +606,7 @@ if __name__ == '__main__':
     parser.add_argument("--ep", help="SqueezeBits 포스팅 넘버", required=True)
     parser.add_argument("--exp", help="SqueezeBits 포스팅 내 실험 순서", required=True)
     parser.add_argument("--devices", help='CUDA_VISIBLE_DEVICES 값', default='0')
-    parser.add_argument("--quantization", help='Quantization Method', choices=['awq', 'awq_marlin', 'gptq', 'gptq_marlin', 'gptq_exllamav2'])
+    parser.add_argument("--quantization", help='Quantization Method', choices=['awq', 'awq_marlin', 'gptq_marlin', 'gptq_exllamav2'])
     parser.add_argument("--disable-tqdm", action='store_true')
 
     args = parser.parse_args()

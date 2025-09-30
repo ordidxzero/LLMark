@@ -49,15 +49,20 @@ class LogState:
     use_stdout: bool = False
     filename: Optional[str] = None
     valid_args: CommandArgs = field(default_factory=dict)
-    mapping: Optional[Callable] = None
+    filtering_fn: Optional[Callable[[CommandArgs], CommandArgs]] = None
+    mapping_fn: Optional[Callable[[str, str, CommandArgs], str]] = None
 
     def set_filename(self):
         filename = []
+        self._filtered_args = self.valid_args.copy()
+        if self.filtering_fn is not None:
+            self._filtered_args = self.filtering_fn(self._filtered_args)
 
-        if self.mapping is not None:
-            self.valid_args = self.mapping(self.valid_args.copy())
+        if self.mapping_fn is not None:
+            self.filename = self.mapping_fn(self.device_prefix, self.prefix, self.valid_args.copy())
+            return
 
-        for key, value in self.valid_args.items():
+        for key, value in self._filtered_args.items():
             filename.append(f"{key}_{value}")
 
         filename = "_".join(filename)
@@ -88,11 +93,11 @@ class CommandTemplateV2:
     _log_state: LogState
     _arg_names: List[str]
     _cmd: Optional[str]
-    def __init__(self, template: str, partial_variables: CommandArgs = {}, mapping: Optional[Callable[[CommandArgs], CommandArgs]] = None):
+    def __init__(self, template: str, partial_variables: CommandArgs = {}, filtering: Optional[Callable[[CommandArgs], CommandArgs]] = None, mapping: Optional[Callable[[str, str, CommandArgs], str]] = None):
         self._skeleton = Template(template)
         self._skeleton = Template(self._skeleton.safe_substitute(**partial_variables))
         self._envs = {}
-        self._log_state = LogState(valid_args=partial_variables, mapping=mapping)
+        self._log_state = LogState(valid_args=partial_variables, filtering_fn=filtering, mapping_fn=mapping)
         self._arg_names = self._extract_template_vars()
         self._cmd = None
 
