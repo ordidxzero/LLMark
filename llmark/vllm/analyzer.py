@@ -4,7 +4,7 @@ from llmark.utils import LogAnalyzer
 from typing import List, Tuple, Optional
 from tqdm import tqdm
 
-def plot_sequential_data(blocks: List[int | float], filename: str, target_path: Path, title: str = 'GPU KV Cache Usage', ylabel: str = 'Percentage', ylim: int = 100):
+def plot_sequential_data(blocks: List[int] | List[float], filename: str, target_path: Path, title: str = 'GPU KV Cache Usage', ylabel: str = 'Percentage', ylim: int = 100):
     import matplotlib.pyplot as plt
     x = list(range(len(blocks)))  # x축 인덱스
 
@@ -22,7 +22,7 @@ def plot_sequential_data(blocks: List[int | float], filename: str, target_path: 
     plt.close()  # 메모리 절약을 위해 닫기
 
 class BaseState:
-    def mean(self, d: List[int | float]):
+    def mean(self, d: List[int] | List[float]) -> float:
         return round(sum(d) / len(d), 2)
 
 class VLLMPromptState(BaseState):
@@ -53,9 +53,6 @@ class VLLMPromptState(BaseState):
     def get_avg_latency_without_delay(self):
         return self.mean(self.latencies_without_delay)
     
-    def get_avg_prompt_delay(self):
-        return self.mean(self.prompt_delay_list)
-    
     def get_total_prompt_delay(self):
         return round(sum(self.prompt_delay_list), 2)
     
@@ -83,11 +80,10 @@ class VLLMPromptState(BaseState):
         if self.is_prompt_group:
             prompt_buffer = (iter_num, running_seqs, latency + self.prompt_delay)
             self.prompt_group.append(prompt_buffer)
+
         self.push_prompt_delay(latency)
 
     def push_prompt_delay(self, latency: float):
-        if self.prompt_delay == 0: return
-
         self.latencies_without_delay.append(latency)
         self.latencies_with_delay.append(latency + self.prompt_delay)
         self.prompt_delay_list.append(self.prompt_delay)
