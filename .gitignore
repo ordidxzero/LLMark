@@ -141,6 +141,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv.*
 env/
 venv/
 ENV/
@@ -212,3 +213,4 @@ pyrightconfig.json
 _vllm/
 _TensorRT-LLM/
 output/
+quantized_model/

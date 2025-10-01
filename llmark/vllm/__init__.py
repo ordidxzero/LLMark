@@ -5,10 +5,144 @@ from llmark.utils import (
     find_package,
     find_package_version,
     Benchmark,
+    BenchmarkV2,
     BenchmarkArgs,
     CommandTemplate,
+    CommandTemplateV2,
+    CommandArgs
 )
 
+class VLLMBenchmarkRunnerV2(BenchmarkV2):
+    _server_process: subprocess.Popen[str] | None
+    _terminate_server: Callable[..., None] | None
+
+    def __init__(
+        self, benchmark_cmd: CommandTemplateV2, server_cmd: CommandTemplateV2, enable_nvtx: bool = False, **kwargs: Unpack[BenchmarkArgs]
+    ):
+        if not find_package("vllm"):
+            raise Exception("vLLM is not installed")
+        
+        
+        print("=" * 30)
+        print("Current vLLM Version: ", find_package_version("vllm"))
+        print("=" * 30)
+
+        super().__init__(**kwargs)
+
+        self._set_runner_type("vllm")
+
+        self._server_process = None
+        self._terminate_server = None
+        self._enable_nvtx = enable_nvtx
+
+        self._cmd["benchmark"] = benchmark_cmd
+        self._cmd["server"] = server_cmd
+
+        self._cmd["benchmark"].set_log(dir=self._log_dir / "benchmark")
+        self._cmd["server"].set_log(dir=self._log_dir / "server", use_stdout=True)
+        self._cmd["benchmark"].set_envs(**self._user_env)
+
+    def set_benchmark_cmd(self, cmd: CommandTemplateV2):
+        self._cmd['benchmark'] = cmd
+        self._cmd['benchmark'].set_log(dir=self._log_dir / 'benchmark')
+        self._cmd["benchmark"].set_envs(**self._user_env)
+
+    def set_server_cmd(self, cmd: CommandTemplateV2):
+        self._cmd['server'] = cmd
+        self._cmd["server"].set_log(dir=self._log_dir / "server", use_stdout=True)
+
+    def run_server(self):
+        assert self._is_ready == True, "Runner is not initalized. Invoke init()"
+        assert Benchmark.is_port_open() == False, "Port 8000 is already used."
+        if self._server_process is not None:
+            assert (
+                self._server_process.poll() == 0
+            ), "Server does not closed successfully."
+            self._server_process = None
+
+        print("=" * 30)
+        print(f"Server Command: {self._cmd['server'].as_string()}")
+        print("=" * 30)
+        log_file = open(self._cmd["server"].log_path.absolute().as_posix(), "w")
+
+        server_process = subprocess.Popen(
+            args=self._cmd["server"].as_string().split(" "),
+            text=True,
+            encoding="utf-8",
+            stdout=log_file,
+            env=self._env,
+        )
+        self._server_process = server_process
+
+        def terminate():
+            log_file.close()
+            server_process.terminate()
+            server_process.wait(timeout=60)
+            print("Terminated...")
+            torch.cuda.empty_cache()
+            gc.collect()
+
+        self._terminate_server = terminate
+        log_file.close()
+
+    def run_benchmark(self):
+        print("=" * 30)
+        print(f"Benchmark Command: {self._cmd['benchmark'].as_string()}")
+        print("=" * 30)
+        self._cmd["benchmark"].run()
+
+    def run(self, **kwargs: str | int | float):
+        """init, run_server, run_benchmark를 합친 메서드"""
+        self.init(**kwargs)
+        self.run_server()
+
+        assert self._terminate_server != None, "Server is not initialized"
+
+        while True:
+            if Benchmark.is_port_open():
+                self.run_benchmark()
+                break
+            time.sleep(1)
+
+        ENABLE_NSYS_PROFILE = self._cmd["server"].as_string().startswith("nsys profile")
+
+        if "VLLM_TORCH_PROFILER_DIR" in self._user_env:
+            print("Wait to flush out")
+            time.sleep(180)
+
+        self._terminate_server()
+        self._is_ready = False
+
+class RBLNVLLMBenchmarkRunner(BenchmarkV2):
+    _server_process: subprocess.Popen[str] | None
+    _terminate_server: Callable[..., None] | None
+
+    def __init__(
+        self, benchmark_cmd: CommandTemplateV2, server_cmd: CommandTemplateV2, **kwargs: Unpack[BenchmarkArgs]
+    ):
+        if not BenchmarkV2.is_rbln():
+            raise Exception("This BenchmarkRunner only support Rebellions NPU.")
+
+        if not find_package("vllm"):
+            raise Exception("vLLM is not installed")
+        
+        print("=" * 30)
+        print("Current vLLM Version: ", find_package_version("vllm"))
+        print("=" * 30)
+
+        super().__init__(**kwargs)
+
+        self._set_runner_type("vllm_rbln")
+
+        self._server_process = None
+        self._terminate_server = None
+
+        self._cmd["benchmark"] = benchmark_cmd
+        self._cmd["server"] = server_cmd
+
+        self._cmd["benchmark"].set_log(dir=self._log_dir / "benchmark")
+        self._cmd["server"].set_log(dir=self._log_dir / "server", use_stdout=True)
+        self._cmd["benchmark"].set_envs(**self._user_env)
 
 class VLLMBenchmarkRunner(Benchmark):
     _server_process: subprocess.Popen[str] | None
@@ -90,6 +224,8 @@ class VLLMBenchmarkRunner(Benchmark):
             gc.collect()
 
             print("Terminated...")
+            torch.cuda.empty_cache()
+            gc.collect()
 
         self._terminate_server = terminate
         log_file.close()
@@ -112,8 +248,7 @@ class VLLMBenchmarkRunner(Benchmark):
                 break
             time.sleep(1)
 
+        if "VLLM_TORCH_PROFILER_DIR" in self._user_env:
+            print("Wait to flush out")
+            time.sleep(1800)
         self._terminate_server()
-
-if __name__ != "__main__":
-    find_package("vllm")
-    print("Current vLLM Version: ", find_package_version("vllm"))

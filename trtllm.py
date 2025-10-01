@@ -9,8 +9,9 @@ SQUEEZEBITS_N1_EXP3 = False
 SQUEEZEBITS_N2_EXP1 = False
 SQUEEZEBITS_N2_EXP2 = False
 
-SQUEEZEBITS_N5_EXP1 = True
-SQUEEZEBITS_N5_EXP2 = False
+SQUEEZEBITS_N5_EXP1 = False
+SQUEEZEBITS_N5_EXP2 = True
+SQUEEZEBITS_N5_EXP3 = False
 
 if SQUEEZEBITS_N1_EXP1:
     BUILD_CMD = "trtllm-bench --model meta-llama/Meta-Llama-3-8B build --max_batch_size 256 --max_num_tokens 8192 --dataset {build_dataset_path}"
@@ -121,11 +122,12 @@ if SQUEEZEBITS_N2_EXP2:
             runner.run(build_dataset_path=build_dataset_path, benchmark_dataset_path=benchmark_dataset_path, max_batch_size=max_batch_size, max_num_tokens=max_num_tokens)
 
 if SQUEEZEBITS_N5_EXP1:
+    print("Start SQUEEZEBITS_N5_EXP1...")
     SUBSETS = ['1k', '2k', '4k', '8k']
 
     BUILD_CMD = "trtllm-bench --model meta-llama/Meta-Llama-3-8B build --max_batch_size 256 --max_num_tokens 16384 --dataset {build_dataset_path}"
-    BENCHMARK_CMD = "/app/tensorrt_llm/benchmarks/cpp/gptManagerBenchmark --engine_dir /tmp/meta-llama/Meta-Llama-3-8B/tp_1_pp_1/ --dataset {benchmark_dataset_path} --eos_id 13 --log_iteration_data --streaming true"
-    runner = TensorRTLLMBenchmarkRunner(benchmark_cmd=BENCHMARK_CMD, build_cmd=BUILD_CMD, log_dir=Path("/code/output/TensorRT-LLM"), envs={"CUDA_VISIBLE_DEVICES": "3"})
+    BENCHMARK_CMD = "/app/tensorrt_llm/benchmarks/cpp/gptManagerBenchmark --engine_dir /tmp/meta-llama/Meta-Llama-3-8B/tp_1_pp_1/ --dataset {benchmark_dataset_path} --eos_id 128009 --log_iteration_data --streaming true"
+    runner = TensorRTLLMBenchmarkRunner(benchmark_cmd=BENCHMARK_CMD, build_cmd=BUILD_CMD, log_dir=Path("/code/output/TensorRT-LLM"), envs={"CUDA_VISIBLE_DEVICES": "0"})
 
     generator = TensorRTLLMDatasetGenerator(script_path=Path("/app/tensorrt_llm/benchmarks/cpp/prepare_dataset.py"), save_dir=Path("/code/_TensorRT-LLM/datasets"))
 
@@ -139,29 +141,30 @@ if SQUEEZEBITS_N5_EXP1:
         pbar.update(1)
 
 if SQUEEZEBITS_N5_EXP2:
+    print("Start SQUEEZEBITS_N5_EXP2...")
     SUBSETS = ['1k', '2k', '4k', '8k']
     dynamic_dataset = {
         "1k": {
             "input_len": 512,
-            "output_len": 1024,
+            "output_len": 710,
         },
         "2k": {
             "input_len": 1017,
-            "output_len": 1024,
+            "output_len": 731,
         },
         "4k": {
             "input_len": 3076,
-            "output_len": 1024,
+            "output_len": 770,
         },
         "8k": {
             "input_len": 7154,
-            "output_len": 1024,
+            "output_len": 809,
         }
     }
 
     BUILD_CMD = "trtllm-bench --model meta-llama/Meta-Llama-3-8B build --max_batch_size 256 --max_num_tokens 16384 --dataset {build_dataset_path}"
     BENCHMARK_CMD = "/app/tensorrt_llm/benchmarks/cpp/gptManagerBenchmark --engine_dir /tmp/meta-llama/Meta-Llama-3-8B/tp_1_pp_1/ --dataset {benchmark_dataset_path} --log_iteration_data --streaming true"
-    runner = TensorRTLLMBenchmarkRunner(benchmark_cmd=BENCHMARK_CMD, build_cmd=BUILD_CMD, log_dir=Path("/code/output/TensorRT-LLM"), envs={"CUDA_VISIBLE_DEVICES": "3"})
+    runner = TensorRTLLMBenchmarkRunner(benchmark_cmd=BENCHMARK_CMD, build_cmd=BUILD_CMD, log_dir=Path("/code/output/TensorRT-LLM"), envs={"CUDA_VISIBLE_DEVICES": "0"})
 
     generator = TensorRTLLMDatasetGenerator(script_path=Path("/app/tensorrt_llm/benchmarks/cpp/prepare_dataset.py"), save_dir=Path("/code/_TensorRT-LLM/datasets"))
 
@@ -179,3 +182,24 @@ if SQUEEZEBITS_N5_EXP2:
         runner.set_log_prefix("n5_exp1_fixed")
         runner.run(build_dataset_path=build_dataset_path, benchmark_dataset_path=benchmark_dataset_path, subset=subset)
         pbar.update(1)
+
+if SQUEEZEBITS_N5_EXP3:
+    print("Start SQUEEZEBITS_N5_EXP3...")
+    MAX_OUTPUT_LENGHTS = [1024, 2048, 3072, 4096]
+    SCHEDULER_POLICIES = ['guaranteed_no_evict', 'max_utilization']
+
+    BUILD_CMD = "trtllm-bench --model meta-llama/Meta-Llama-3-8B build --max_batch_size 256 --max_num_tokens 16384 --dataset {build_dataset_path}"
+    BENCHMARK_CMD = "/app/tensorrt_llm/benchmarks/cpp/gptManagerBenchmark --engine_dir /tmp/meta-llama/Meta-Llama-3-8B/tp_1_pp_1/ --dataset {benchmark_dataset_path} --scheduler_policy {scheduler_policy} --eos_id 13 --log_iteration_data --streaming true"
+    runner = TensorRTLLMBenchmarkRunner(benchmark_cmd=BENCHMARK_CMD, build_cmd=BUILD_CMD, log_dir=Path("/code/output/TensorRT-LLM"), envs={"CUDA_VISIBLE_DEVICES": "0"})
+
+    generator = TensorRTLLMDatasetGenerator(script_path=Path("/app/tensorrt_llm/benchmarks/cpp/prepare_dataset.py"), save_dir=Path("/code/_TensorRT-LLM/datasets"))
+
+    pbar = tqdm(total=len(MAX_OUTPUT_LENGHTS) * len(SCHEDULER_POLICIES))
+
+    for max_output_length in MAX_OUTPUT_LENGHTS:
+        for scheduler_policy in SCHEDULER_POLICIES:
+            build_dataset_path, benchmark_dataset_path = generator.get_dynamic_sonnet_dataset('4k', output_len=max_output_length)
+
+            runner.set_log_prefix("n5_exp3")
+            runner.run(build_dataset_path=build_dataset_path, benchmark_dataset_path=benchmark_dataset_path, scheduler_policy=scheduler_policy, max_output_len=max_output_length)
+            pbar.update(1)

@@ -1,6 +1,10 @@
 from pathlib import Path
 from llmark.vllm.analyzer import VLLMAnalyzer
+from llmark.trtllm.analyzer import TensorRTLLMAnalyzer
 
-analyzer = VLLMAnalyzer(log_dir=Path("./output/vLLM/server"))
+methods = ['awq', 'awq_marlin', 'FP16', 'gptq_exllamav2', 'gptq_marlin']
 
-analyzer.run("A100-SXM4-40GB_n5_exp1_hf_split_8k_.log", save_dir=Path("./output/vLLM/final"))
+for m in methods:
+    analyzer = VLLMAnalyzer(log_dir=Path(f"./output/vLLM/{m}/server"))
+
+    analyzer.run("A100_80GB_PCIe_ep6_decode*.log", save_dir=Path(f"./output/final/{m}"))

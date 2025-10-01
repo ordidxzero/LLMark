@@ -1,8 +1,8 @@
-from llmark.utils import Benchmark, BenchmarkArgs, CommandTemplate
+from llmark.utils import find_package, find_package_version, Benchmark, BenchmarkArgs, CommandTemplate, BenchmarkV2, CommandTemplateV2
 from typing_extensions import Unpack
 from datasets import load_dataset
 from pathlib import Path
-import os, torch, json
+import os, torch, json, random
 
 class TensorRTLLMDatasetGenerator:
     _dataset_dir: Path
@@ -11,7 +11,7 @@ class TensorRTLLMDatasetGenerator:
         self._dataset_dir = save_dir
         self._script_path = script_path
 
-    def generate(self, name: str, tokenizer: str = "meta-llama/Llama-3.1-8B-Instruct", num_requests: int = 1024, input_len: int = 1024, input_stdev: int = 0, output_len: int = 1024, output_stdev: int = 0, for_build: bool = False) -> str:
+    def generate(self, name: str, tokenizer: str = "meta-llama/Meta-Llama-3-8B", num_requests: int = 1024, input_len: int = 1024, input_stdev: int = 0, output_len: int = 1024, output_stdev: int = 0, for_build: bool = False) -> str:
         if for_build:
             if not name.endswith('.txt'):
                 name += '.txt'
@@ -63,28 +63,28 @@ class TensorRTLLMDatasetGenerator:
             "1k": {
                 "input_len": 512,
                 "input_stdev": 140,
-                "output_len": 1024,
+                "output_len": output_len,
                 "num_requests": 1024,
                 "max_input_len": 773,
             },
             "2k": {
                 "input_len": 1017,
                 "input_stdev": 288,
-                "output_len": 1024,
+                "output_len": output_len,
                 "num_requests": 1024,
                 "max_input_len": 1536,
             },
             "4k": {
                 "input_len": 3076,
                 "input_stdev": 294,
-                "output_len": 1024,
+                "output_len": output_len,
                 "num_requests": 1024,
                 "max_input_len": 3601,
             },
             "8k": {
                 "input_len": 7154,
                 "input_stdev": 284,
-                "output_len": 1024,
+                "output_len": output_len,
                 "num_requests": 1024,
                 "max_input_len": 7709,
             }
@@ -93,25 +93,69 @@ class TensorRTLLMDatasetGenerator:
         metadata = self._get_dynamic_sonnet_metadata(dynamic_dataset[hf_split])
         samples = []
 
-        with open(build_dataset_path) as f:
+        with open(build_dataset_path, 'w') as f:
             for data in dataset:
                 tok_inputs = data['tok_inputs']
                 task_id = data['id']
 
-                line = {"task_id":task_id,"logits":tok_inputs,"output_tokens":output_len}
+                c = random.uniform(0, 1)
+                sample_output_len = output_len
+                if c < 0.65:
+                    sample_output_len = int(sample_output_len * random.uniform(0.5, 1))
 
-                samples.append(self._to_sample(data, output_len))
+                line = {"task_id":task_id,"logits":tok_inputs,"output_tokens":sample_output_len}
+
+                samples.append(self._to_sample(data, sample_output_len))
 
                 f.write(json.dumps(line))
                 f.write("\n")
 
         
-        with open(benchmark_dataset_path) as f:
+        with open(benchmark_dataset_path, 'w') as f:
             d = {"metadata": metadata, "samples": samples}
             json.dump(d, f)
 
         return build_dataset_path.absolute().as_posix(), benchmark_dataset_path.absolute().as_posix()
 
+class TensorRTLLMBenchmarkRunnerV2(BenchmarkV2):
+    def __init__(self, benchmark_cmd: CommandTemplateV2, build_cmd: CommandTemplateV2, delete_cmd: CommandTemplateV2 = CommandTemplateV2("rm -rf /tmp/meta-llama"), **kwargs: Unpack[BenchmarkArgs]):
+        if not find_package("tensorrt-llm"):
+            raise Exception("TensorRT-LLM is not installed")
+        
+        print("=" * 30)
+        print("Current TensorRT-LLM Version: ", find_package_version("tensorrt-llm"))
+        print("=" * 30)
+
+        super().__init__(**kwargs)
+
+        self._set_runner_type("tensorrt_llm")
+
+        self._cmd["benchmark"] = benchmark_cmd
+        self._cmd["build"] = build_cmd
+        self._cmd["delete"] = delete_cmd
+
+        self._cmd["benchmark"].set_log(dir=self._log_dir)
+        self._cmd["benchmark"].set_envs(**self._user_env)
+        self._cmd["build"].set_envs(**self._user_env)
+
+    def get_dataset(self, script_path: Path, save_dir: Path = Path("."), for_build: bool = False) -> Path:
+        generator = TensorRTLLMDatasetGenerator(script_path=script_path, save_dir=save_dir)
+        pass
+
+    def build_model(self):
+        print("Start Build...")
+        self._cmd['delete'].run()
+        self._cmd["build"].run()
+
+    def run_benchmark(self):
+        print("Start Benchmark...")
+        self._cmd["benchmark"].run()
+    
+    def run(self, **kwargs: str | int | float):
+        self.init(**kwargs)
+
+        self.build_model()
+        self.run_benchmark()
 
 class TensorRTLLMBenchmarkRunner(Benchmark):
     def __init__(self, benchmark_cmd: str, build_cmd: str, delete_cmd: str = "rm -rf /tmp/meta-llama", **kwargs: Unpack[BenchmarkArgs]):
@@ -159,7 +203,6 @@ class TensorRTLLMBenchmarkRunner(Benchmark):
         
         self._cmd["benchmark"].set_env(self._user_env)
         self._cmd["benchmark"].exec()
-
 
 class TritonBenchmarkRunner(Benchmark):
     def __init__(self, benchmark_cmd: str, build_cmd: str):
