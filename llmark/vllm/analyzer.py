@@ -1,4 +1,4 @@
-import re, json
+import re, json, math
 from pathlib import Path
 from llmark.utils import LogAnalyzer
 from typing import List, Tuple, Optional
@@ -22,13 +22,18 @@ def plot_sequential_data(blocks: List[int] | List[float], filename: str, target_
     plt.close()  # 메모리 절약을 위해 닫기
 
 class BaseState:
-    def mean(self, d: List[int] | List[float]) -> float:
-        return round(sum(d) / len(d), 2)
+    def mean(self, d: List[int] | List[float], trimmed: float = 0.0) -> float:
+        num_items = len(d)
+        max_bound = num_items - math.ceil(num_items * trimmed)
+        min_bound = math.ceil(num_items * trimmed)
+        
+        return round(sum(d[min_bound: max_bound]) / len(d[min_bound: max_bound]), 2)
 
 class VLLMPromptState(BaseState):
     iter_nums: List[int]
     running_seqs: List[int]
     latencies: List[float]
+    throughputs: List[float]
     latencies_with_delay: List[float]
     latencies_without_delay: List[float]
     prompt_delay_list: List[float]
@@ -43,6 +48,9 @@ class VLLMPromptState(BaseState):
     
     def get_avg_latency(self):
         return self.mean(self.latencies)
+
+    def get_avg_throughput(self):
+        return self.mean(self.throughputs, 0.2)
     
     def get_total_latency(self):
         return round(sum(self.latencies), 2)
@@ -63,6 +71,7 @@ class VLLMPromptState(BaseState):
         self.iter_nums = []
         self.running_seqs = []
         self.latencies = []
+        self.throughputs = []
         self.latencies_with_delay = []
         self.latencies_without_delay = []
         self.prompt_delay_list = []
@@ -71,8 +80,10 @@ class VLLMPromptState(BaseState):
         self.prompt_group = []
         self.prompt_group_list = []
 
-    def push(self, iter_num: int, running_seqs: int, latency: float):
+    def push(self, iter_num: int, throughput: float, running_seqs: int, latency: float):
         self.iter_nums.append(iter_num)
+        if throughput < 100_000:
+            self.throughputs.append(throughput)
         self.running_seqs.append(running_seqs)
         self.latencies.append(latency)
 
@@ -141,22 +152,28 @@ class VLLMGenerationState(BaseState):
     iter_nums: List[int]
     running_seqs: List[int]
     latencies: List[float]
+    throughputs: List[float]
 
     def __init__(self):
         self.iter_nums = []
         self.running_seqs = []
         self.latencies = []
+        self.throughputs = []
 
     def get_avg_running_seqs(self):
         return self.mean(self.running_seqs)
     
     def get_avg_latency(self):
         return self.mean(self.latencies)
+    
+    def get_avg_throughput(self):
+        return self.mean(self.throughputs, 0.05)
 
-    def push(self, iter_num: int, running_seqs: int, latency: float):
+    def push(self, iter_num: int, throughput: float, running_seqs: int, latency: float):
         self.iter_nums.append(iter_num)
         self.running_seqs.append(running_seqs)
         self.latencies.append(latency)
+        self.throughputs.append(throughput)
 
 class VLLMMiscellaneousState(BaseState):
     original_running_seqs: List[int]
@@ -230,6 +247,12 @@ class VLLMAnalyzerState(BaseState):
     def get_avg_generation_latency(self):
         return self.generation_state.get_avg_latency()
     
+    def get_avg_prompt_throughput(self):
+        return self.prompt_state.get_avg_throughput()
+    
+    def get_avg_generation_throughput(self):
+        return self.generation_state.get_avg_throughput()
+    
     def get_preemption_seqs(self):
         return sum(self.miscellaneous_state.preemption_seqs)
     
@@ -291,12 +314,12 @@ class VLLMAnalyzer(LogAnalyzer):
                             # Prompt Stage
                             state.prompt_state.start_prompt_group()
 
-                            state.prompt_state.push(iter_num, prompt_seqs, latency)
+                            state.prompt_state.push(iter_num, prompt_throughput, prompt_seqs, latency)
                             state.miscellaneous_state.push_running_seqs(prompt_seqs)
 
                         elif generation_throughput != 0.0:
                             # Generation Stage
-                            state.generation_state.push(iter_num, generation_seqs, latency)
+                            state.generation_state.push(iter_num, generation_throughput, generation_seqs, latency)
                             state.miscellaneous_state.push_running_seqs(generation_seqs)
 
                             state.prompt_state.end_prompt_group()
@@ -318,6 +341,8 @@ class VLLMAnalyzer(LogAnalyzer):
                     "avg_generation_seqs": state.get_avg_generation_seqs(),
                     "avg_prompt_latency": state.get_avg_prompt_latency(),
                     "avg_generation_latency": state.get_avg_generation_latency(),
+                    "avg_prompt_throughput": state.get_avg_prompt_throughput(),
+                    "avg_generation_throughput": state.get_avg_generation_throughput(),
                     "avg_prompt_delay": state.prompt_state.get_avg_prompt_delay(),
                     "avg_prompt_latency_with_delay": state.prompt_state.get_avg_latency_with_delay(),
                     "avg_prompt_latency_without_delay": state.prompt_state.get_avg_latency_without_delay(),

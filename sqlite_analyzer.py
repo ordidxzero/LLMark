@@ -44,15 +44,6 @@ def get_connection(filename: str):
 
     return connection, cursor
 
-def get_tpots(cursor: sqlite3.Cursor, args: argparse.Namespace):
-    QUERY = f"WITH event AS (SELECT id, start, end FROM NVTX_EVENTS_WITH_KEY WHERE text='tpot' AND id > {args.skip_offset}) SELECT e.id, ROUND((MAX(m.kernel_end) - MIN(m.kernel_start)) / 1000000.0, 3) AS latency FROM event AS e JOIN KERNEL_RUNTIME_MAPPING m ON m.runtime_start >= e.start AND m.runtime_end <= e.end GROUP BY e.id ORDER BY e.id"
-
-    cursor.execute(QUERY)
-
-    tpots = cursor.fetchall()
-
-    return tpots
-
 def main(args: argparse.Namespace):
     connection, cursor = get_connection(args.filename)
     unit = '1000000.0' if args.unit == 'ms' else '1000.0'

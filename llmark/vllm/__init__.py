@@ -9,7 +9,8 @@ from llmark.utils import (
     BenchmarkArgs,
     CommandTemplate,
     CommandTemplateV2,
-    CommandArgs
+    CommandArgs,
+    NSYSOptions
 )
 
 class VLLMBenchmarkRunnerV2(BenchmarkV2):
@@ -104,9 +105,9 @@ class VLLMBenchmarkRunnerV2(BenchmarkV2):
                 break
             time.sleep(1)
 
-        ENABLE_NSYS_PROFILE = self._cmd["server"].as_string().startswith("nsys profile")
+        ENABLE_NSYS_PROFILE = "duration" in self._cmd["server"].as_string()
 
-        if "VLLM_TORCH_PROFILER_DIR" in self._user_env:
+        if "VLLM_TORCH_PROFILER_DIR" in self._user_env or ENABLE_NSYS_PROFILE:
             print("Wait to flush out")
             time.sleep(180)
 

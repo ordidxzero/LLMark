@@ -87,18 +87,44 @@ class LogState:
         device_name = device_name.replace(" ", "_")
         self.device_prefix = device_name
 
+@dataclass
+class NSYSOptions:
+    trace: str = 'cuda,nvtx'
+    output: str = ''
+    cuda_graph_trace: str = 'node'
+    delay: int = 50
+    duration: Optional[int] = None
+    workload: Literal['prefill_heavy', 'decode_heavy'] = 'prefill_heavy'
+    cuda_visible_devices: str = '0'
+    dataset: Literal['hf', 'random'] = 'random'
+    max_num_seqs: Literal[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024] = 1
+    num_prompts: int = 1024
+
+
+    def get_profile_cmd(self):
+        nsys_cmd = f'nsys profile -t {self.trace} -o {self.output} --cuda-graph-trace={self.cuda_graph_trace} --cuda-memory-usage=true --gpu-metrics-devices={self.cuda_visible_devices} --cuda-flush-interval=10000 --force-overwrite=true --sample=none --cpuctxsw=none --delay {self.delay} '
+        if self.duration is not None:
+            nsys_cmd += f'--duration {self.duration} '
+        return nsys_cmd
+
+    @classmethod
+    def from_json(cls, d: dict):
+        return cls(**d)
+
 class CommandTemplateV2:
     _skeleton: Template
     _envs: Dict[str, str]
     _log_state: LogState
     _arg_names: List[str]
     _cmd: Optional[str]
+    _enforce_eager: Optional[bool]
     def __init__(self, template: str, partial_variables: CommandArgs = {}, filtering: Optional[Callable[[CommandArgs], CommandArgs]] = None, mapping: Optional[Callable[[str, str, CommandArgs], str]] = None):
         self._skeleton = Template(template)
         self._skeleton = Template(self._skeleton.safe_substitute(**partial_variables))
         self._envs = {}
         self._log_state = LogState(valid_args=partial_variables, filtering_fn=filtering, mapping_fn=mapping)
         self._arg_names = self._extract_template_vars()
+        self._enforce_eager = False
         self._cmd = None
 
     def format(self, **kwargs: str | int | float):
@@ -167,6 +193,9 @@ class CommandTemplateV2:
         cmd = self._transform()
         os.system(cmd)
 
+    def set_eager(self, enforce_eager: bool):
+        self._enforce_eager = enforce_eager
+
     def as_string(self) -> str:
         """
         현재 상태에서 구성된 최종 명령어 문자열을 반환합니다.
@@ -175,6 +204,10 @@ class CommandTemplateV2:
             str: 실행 가능한 명령어 문자열
         """ 
         return self._transform()
+    
+    def wrap_nsys(self, options: NSYSOptions):
+        cmd_wrapper = options.get_profile_cmd()
+        self._skeleton = Template(cmd_wrapper + self._skeleton.template)
 
     def _transform(self) -> str:
         """
@@ -197,6 +230,9 @@ class CommandTemplateV2:
             self._log_state.dir.mkdir(parents=True)
 
         cmd = envs + self._cmd
+
+        if self._enforce_eager:
+            cmd += ' --enforce-eager'
 
         if not self._log_state.use_stdout:
             cmd += f" >> {log_path}"
