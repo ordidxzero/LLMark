@@ -216,7 +216,9 @@ def get_nsys_options(args: argparse.Namespace) -> Optional[NSYSOptions]:
 def get_quantization_config(args: argparse.Namespace):
     server_args = {
         "model": "meta-llama/Llama-3.1-8B-Instruct",
-        "dtype": "float16",
+        "dtype": "bfloat16",
+        "tp": 2,
+        "pp": 2,
         "quantization": None
     }
 
@@ -498,6 +500,38 @@ def run_ep5_experiment5(args: argparse.Namespace):
         if pbar is not None:
             pbar.update(1)
 
+
+@exp_register(episode=1)
+def run_ep1(args: argparse.Namespace):
+    cuda_visible_devices = args.devices
+    
+    DATASETS = [(2048, 2048), (128, 2048), (2048, 128), (128, 128)]
+    pbar = tqdm(total=len(DATASETS))
+
+    def rename(device_prefix: str, prefix: str, d: CommandArgs) -> str:
+        input_len = d['input_len']
+        output_len = d['output_len']
+        filename = f'input_len_{input_len}_output_len_{output_len}'
+
+        if prefix != '':
+            filename = f'{prefix}_{filename}'
+        else:
+            filename = f'{device_prefix}_{filename}'
+
+        return filename + '.log'
+
+    SERVER_CMD = CommandTemplateV2('vllm serve meta-llama/Meta-Llama-3-8B --dtype bfloat16 --disable-log-requests', mapping=rename)
+    BENCHMARK_CMD = CommandTemplateV2('vllm bench serve --backend vllm --model meta-llama/Meta-Llama-3-8B --dataset-name random --ignore-eos --random-input-len {input_len} --random-output-len {output_len} --num-prompt 4096', mapping=rename)
+
+    runner = VLLMBenchmarkRunnerV2(server_cmd=SERVER_CMD, benchmark_cmd=BENCHMARK_CMD, log_dir=Path(f"./output/vLLM/BF16"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices, "VLLM_USE_V1": '1'})
+
+    for t in DATASETS:
+        input_len, output_len = t
+        runner.set_prefix(f'ep1_1st')
+        runner.run(input_len=input_len, output_len=output_len)
+        if pbar is not None:
+            pbar.update(1)
+
 @exp_register(episode=6)
 def run_ep6(args: argparse.Namespace):
     cuda_visible_devices = args.devices
@@ -508,11 +542,11 @@ def run_ep6(args: argparse.Namespace):
     quantization_method = args.quantization if args.quantization is not None else "FP16"
 
     EXP_CONFIGURATION = [(256, 1), (256, 4), (256, 16), (256, 64), (1024, 256)]
-    EXP_CONFIGURATION = [(128, 8)]
+    EXP_CONFIGURATION = [(32768, 64)]
     DATASETS = {
         "decode_heavy": (128, 2048),
-        "prefill_heavy": (2048, 128),
     }
+    
     
     def rename(device_prefix: str, prefix: str, d: CommandArgs) -> str:
         max_num_seqs = d['max_num_seqs']
@@ -526,15 +560,15 @@ def run_ep6(args: argparse.Namespace):
 
         return filename + '.log'
 
-    SERVER_CMD = CommandTemplateV2('vllm serve $model --dtype $dtype --quantization $quantization --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False', partial_variables=server_args, mapping=rename)
-    BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model $model --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --ignore-eos --hf-input-len {input_len} --hf-output-len {output_len} --hf_split 1k --num-prompt {num_prompts}', partial_variables=benchmark_args, mapping=rename) # type: ignore
+    SERVER_CMD = CommandTemplateV2('vllm serve $model --dtype $dtype --quantization $quantization --pipeline-parallel-size $pp --tensor-parallel-size $tp --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False', partial_variables=server_args, mapping=rename)
+    BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model $model --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --ignore-eos --hf-input-len {input_len} --hf-output-len {output_len} --hf_split 1k --num-prompt {num_prompts} --request-rate 10', partial_variables=benchmark_args, mapping=rename) # type: ignore
 
     SERVER_CMD.set_eager(enforce_eager)
 
     if nsys_options:
         SERVER_CMD.wrap_nsys(nsys_options)
 
-    runner = VLLMBenchmarkRunnerV2(server_cmd=SERVER_CMD, benchmark_cmd=BENCHMARK_CMD, log_dir=Path(f"./output/vLLM/{quantization_method}"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices})
+    runner = VLLMBenchmarkRunnerV2(server_cmd=SERVER_CMD, benchmark_cmd=BENCHMARK_CMD, log_dir=Path(f"./output/vLLM/{quantization_method}"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices, "VLLM_ENGINE_ITERATION_TIMEOUT_S": '180'})
 
     if nsys_options is None:
         pbar = tqdm(total=len(DATASETS) * len(EXP_CONFIGURATION))
@@ -559,6 +593,70 @@ def run_ep6(args: argparse.Namespace):
 
     runner.set_prefix(f"nsys_{key}")
     runner.run(max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
+
+@exp_register(episode=9)
+def run_ep9(args: argparse.Namespace):
+    cuda_visible_devices = args.devices
+    disable_tqdm = args.disable_tqdm
+    enforce_eager = args.enforce_eager
+    nsys_options = get_nsys_options(args)
+
+    NUM_REQUESTS_AND_BATCH_SIZE = [(1024, 256), (256, 1), (256, 2), (256, 4), (256, 8), (256, 16), (256, 32), (512, 64), (1024, 128)]
+    PARALLELISM_STRATEGIES = [(1, 4), (2, 2), (4, 1)] # TP and PP
+    REQUESTS_RATES = list(reversed([1, 2, 4, 6, 8, 10, 12, 14, 16, float('inf')]))
+
+    def rename(device_prefix: str, prefix: str, d: CommandArgs) -> str:
+        tensor_parallelism = d['tp']
+        pipeline_parallelism = d['pp']
+        request_rate = d['request_rate']
+        filename = f'tp_{tensor_parallelism}_pp_{pipeline_parallelism}_rr_{request_rate}'
+
+        if prefix != '':
+            filename = f'{prefix}_{filename}'
+        else:
+            filename = f'{device_prefix}_{filename}'
+
+        return filename + '.log'
+
+
+    SERVER_CMD = CommandTemplateV2('vllm serve codellama/CodeLlama-34b-hf --dtype bfloat16 --tensor-parallel-size {tp} --pipeline-parallel-size {pp} --disable-log-requests --max-num-seqs {max_num_seqs} --enable-chunked-prefill False', mapping=rename)
+    BENCHMARK_CMD = CommandTemplateV2('uv run _vllm/benchmarks/benchmark_serving.py --backend vllm --model codellama/CodeLlama-34b-hf --dataset-name hf --dataset-path squeezebits/dynamic_sonnet_llama3 --ignore-eos --hf-input-len {input_len} --hf-output-len {output_len} --hf_split 1k --num-prompt {num_prompts} --request-rate {request_rate}', mapping=rename) # type: ignore
+
+    SERVER_CMD.set_eager(enforce_eager)
+
+    if nsys_options:
+        SERVER_CMD.wrap_nsys(nsys_options)
+
+    if nsys_options is None:
+        pbar = tqdm(total=len(NUM_REQUESTS_AND_BATCH_SIZE) * len(PARALLELISM_STRATEGIES) * len(REQUESTS_RATES))
+        if disable_tqdm:
+            pbar = None
+
+        input_len, output_len = (256, 256)
+
+        for config in NUM_REQUESTS_AND_BATCH_SIZE:
+            num_prompts, max_num_seqs = config
+            for strategy in PARALLELISM_STRATEGIES:
+                tensor_parallelism_size, pipeline_parallelism_size = strategy
+                for request_rate in REQUESTS_RATES:
+                    runner = VLLMBenchmarkRunnerV2(server_cmd=SERVER_CMD, benchmark_cmd=BENCHMARK_CMD, log_dir=Path(f"./output/vLLM/ep9/bs_{max_num_seqs}"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices, "VLLM_ENGINE_ITERATION_TIMEOUT_S": '180'})
+                    runner.run(tp=tensor_parallelism_size, pp=pipeline_parallelism_size, max_num_seqs=max_num_seqs, input_len=input_len, output_len=output_len, num_prompts=num_prompts, request_rate=request_rate)
+
+                    if pbar is not None:
+                        pbar.update(1)
+                        
+        if pbar is not None:
+            pbar.close()
+        
+        return
+    
+    # key = nsys_options.workload
+    # input_len, output_len = DATASETS[key]
+    # max_num_seqs = nsys_options.max_num_seqs
+    # num_prompts = nsys_options.num_prompts
+
+    # runner.set_prefix(f"nsys_{key}")
+    # runner.run(max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
 
 @exp_register(episode=0)
 def run_server(args: argparse.Namespace):
