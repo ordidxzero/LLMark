@@ -209,7 +209,7 @@ def get_nsys_options(args: argparse.Namespace) -> Optional[NSYSOptions]:
             nsys_args['cuda_visible_devices'] = v
 
     quantization_method = args.quantization if args.quantization is not None else "FP16"
-    nsys_args['output'] = f'ep{args.ep}_{quantization_method}_{args.nsys_workload}_max-num-seqs_{args.nsys_max_num_seqs}_num-prompts_{args.nsys_num_prompts}.nsys-rep'
+    nsys_args['output'] = f'ep{args.ep}_tp_{args.nsys_tp}_pp_{args.nsys_pp}_rr_{args.nsys_request_rate}.nsys-rep'
 
     return NSYSOptions.from_json(nsys_args)
 
@@ -603,7 +603,10 @@ def run_ep9(args: argparse.Namespace):
 
     NUM_REQUESTS_AND_BATCH_SIZE = [(1024, 256), (256, 1), (256, 2), (256, 4), (256, 8), (256, 16), (256, 32), (512, 64), (1024, 128)]
     PARALLELISM_STRATEGIES = [(1, 4), (2, 2), (4, 1)] # TP and PP
-    REQUESTS_RATES = list(reversed([1, 2, 4, 6, 8, 10, 12, 14, 16, float('inf')]))
+    NUM_REQUESTS_AND_BATCH_SIZE = [(32768, 16)]
+    PARALLELISM_STRATEGIES = [(1, 4)]
+    REQUESTS_RATES = [1, 2, 4, 6, 8, 10, 12, 14, 16, float('inf')]
+    REQUESTS_RATES = [1, 1, 1, 1]
 
     def rename(device_prefix: str, prefix: str, d: CommandArgs) -> str:
         tensor_parallelism = d['tp']
@@ -650,13 +653,16 @@ def run_ep9(args: argparse.Namespace):
         
         return
     
-    # key = nsys_options.workload
-    # input_len, output_len = DATASETS[key]
-    # max_num_seqs = nsys_options.max_num_seqs
-    # num_prompts = nsys_options.num_prompts
+    tensor_parallelism_size = nsys_options.tp
+    pipeline_parallelism_size = nsys_options.pp
+    request_rate = nsys_options.request_rate
+    input_len, output_len = (256, 256)
+    max_num_seqs = 256
+    num_prompts = nsys_options.num_prompts
+    runner = VLLMBenchmarkRunnerV2(server_cmd=SERVER_CMD, benchmark_cmd=BENCHMARK_CMD, log_dir=Path(f"./output/vLLM/ep9/bs_{max_num_seqs}"), envs={"CUDA_VISIBLE_DEVICES": cuda_visible_devices, "VLLM_ENGINE_ITERATION_TIMEOUT_S": '600'})
 
-    # runner.set_prefix(f"nsys_{key}")
-    # runner.run(max_num_seqs=max_num_seqs, num_prompts=num_prompts, input_len=input_len, output_len=output_len)
+    runner.set_prefix(f"nsys_")
+    runner.run(tp=tensor_parallelism_size, pp=pipeline_parallelism_size, max_num_seqs=max_num_seqs, input_len=input_len, output_len=output_len, num_prompts=num_prompts, request_rate=request_rate)
 
 @exp_register(episode=0)
 def run_server(args: argparse.Namespace):
@@ -746,6 +752,9 @@ def parse_args():
     nsys_parser.add_argument("--workload", choices=['prefill_heavy', 'decode_heavy'], default='prefill_heavy', dest='nsys_workload')
     nsys_parser.add_argument("--max-num-seqs", default=1, dest='nsys_max_num_seqs')
     nsys_parser.add_argument("--num-prompts", default=1024, dest='nsys_num_prompts')
+    nsys_parser.add_argument("--tp", default=1, dest='nsys_tp')
+    nsys_parser.add_argument("--pp", default=1, dest='nsys_pp')
+    nsys_parser.add_argument("--request-rate", default=float('inf'), dest='nsys_request_rate')
 
     args =  parser.parse_args()
 
