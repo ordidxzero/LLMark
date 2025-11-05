@@ -99,10 +99,13 @@ class NSYSOptions:
     dataset: Literal['hf', 'random'] = 'random'
     max_num_seqs: Literal[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024] = 1
     num_prompts: int = 1024
+    tp: int = 1
+    pp: int = 1
+    request_rate: int = 1
 
 
     def get_profile_cmd(self):
-        nsys_cmd = f'nsys profile -t {self.trace} -o {self.output} --cuda-graph-trace={self.cuda_graph_trace} --cuda-memory-usage=true --gpu-metrics-devices={self.cuda_visible_devices} --cuda-flush-interval=10000 --force-overwrite=true --sample=none --cpuctxsw=none --delay {self.delay} '
+        nsys_cmd = f'nsys profile -t {self.trace} -o {self.output} --cuda-graph-trace={self.cuda_graph_trace} --cuda-memory-usage=true --gpu-metrics-devices={self.cuda_visible_devices} --force-overwrite=true --sample=none --cpuctxsw=none --delay {self.delay} '
         if self.duration is not None:
             nsys_cmd += f'--duration {self.duration} '
         return nsys_cmd
